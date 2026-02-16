@@ -26,8 +26,8 @@ Open **http://localhost:3001** in your browser.
 
 Daily macro summary with calorie, protein, net-calorie, and step cards. Food log grouped by meal with inline food search and quick-add.
 
-![Ledger](docs/screnshots/01_ledger.png)
-![Ledger log](docs/screnshots/02_ledger.png)
+![Ledger](docs/screenshots/01_ledger.png)
+![Ledger log](docs/screenshots/02_ledger.png)
 
 ---
 
@@ -35,8 +35,8 @@ Daily macro summary with calorie, protein, net-calorie, and step cards. Food log
 
 Detailed food logging with per-meal sections, inline food search, and snack slots.
 
-![Log](docs/screnshots/03_log.png)
-![Log alternate](docs/screnshots/10_log.png)
+![Log](docs/screenshots/03_log.png)
+![Log alternate](docs/screenshots/10_log.png)
 
 ---
 
@@ -44,8 +44,8 @@ Detailed food logging with per-meal sections, inline food search, and snack slot
 
 Create food items with full macro profiles. Optionally attach recipe instructions (Markdown), categorised ingredients, and a photo.
 
-![Recipe list](docs/screnshots/04_recipe.png)
-![Recipe detail](docs/screnshots/05_recipe_detail.png)
+![Recipe list](docs/screenshots/04_recipe.png)
+![Recipe detail](docs/screenshots/05_recipe_detail.png)
 
 ---
 
@@ -53,7 +53,7 @@ Create food items with full macro profiles. Optionally attach recipe instruction
 
 Track food quantities at home. Auto-deducts when you log a meal. Low-stock and out-of-stock indicators with category tab groupings.
 
-![Pantry](docs/screnshots/06_pantry.png)
+![Pantry](docs/screenshots/06_pantry.png)
 
 ---
 
@@ -61,8 +61,8 @@ Track food quantities at home. Auto-deducts when you log a meal. Low-stock and o
 
 Select recipes and generate a merged, categorised ingredient list. Check off items as you shop, or export to Markdown.
 
-![Shopping list](docs/screnshots/07_shopping_01.png)
-![Shopping checked](docs/screnshots/07_shopping_02.png)
+![Shopping list](docs/screenshots/07_shopping_01.png)
+![Shopping checked](docs/screenshots/07_shopping_02.png)
 
 ---
 
@@ -70,7 +70,7 @@ Select recipes and generate a merged, categorised ingredient list. Check off ite
 
 Monthly view of daily calorie totals at a glance.
 
-![Calendar](docs/screnshots/08_calendar.png)
+![Calendar](docs/screenshots/08_calendar.png)
 
 ---
 
@@ -78,7 +78,7 @@ Monthly view of daily calorie totals at a glance.
 
 Log body weight (lbs or kg) and daily steps/active calories over time.
 
-![Metrics](docs/screnshots/09_metrics.png)
+![Metrics](docs/screenshots/09_metrics.png)
 
 ---
 
