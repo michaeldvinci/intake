@@ -1,0 +1,1747 @@
+openapi: 3.1.0
+info:
+  title: Intake API
+  description: |
+    REST API for the Intake self-hosted macro + weight + steps tracker.
+
+    **Authentication:** Not implemented. The API runs in single-user mode using a
+    hardcoded default user ID (`00000000-0000-0000-0000-000000000001`). All
+    `user_id` fields default to this value when omitted.
+
+    **CORS:** Open (`*`) — all origins, methods, and headers allowed.
+
+    **Timeout:** 10 seconds per request.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8088
+    description: Local Docker (default)
+  - url: http://localhost:8080
+    description: Local API direct
+
+tags:
+  - name: Health
+  - name: Dashboard
+  - name: Food Items
+  - name: Log
+  - name: Body Metrics
+  - name: Presets
+  - name: Recipes
+  - name: Shopping
+  - name: Data
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: healthz
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  time:
+                    type: string
+                    format: date-time
+                    example: "2026-02-13T12:00:00Z"
+
+  /dashboard/today:
+    get:
+      tags: [Dashboard]
+      summary: Get today's macro and activity totals
+      operationId: getDashboardToday
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/DateQuery"
+      responses:
+        "200":
+          description: Daily totals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /day/totals:
+    get:
+      tags: [Dashboard]
+      summary: Get daily macro totals (alias for /dashboard/today with entry count)
+      operationId: getDayTotals
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/DateQuery"
+      responses:
+        "200":
+          description: Daily totals with entry count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayTotalsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /food-items:
+    get:
+      tags: [Food Items]
+      summary: List all food items
+      operationId: listFoodItems
+      responses:
+        "200":
+          description: Array of food items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FoodItem"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Food Items]
+      summary: Create a food item
+      description: |
+        Creates a food item. Also creates a corresponding recipe record with the
+        same ID so it can be used in recipe ingredient lists. Optionally accepts
+        recipe instructions, yield count, and initial ingredients.
+      operationId: createFoodItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFoodItemRequest"
+      responses:
+        "201":
+          description: Food item created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: string
+                    format: uuid
+                  recipe_id:
+                    type: string
+                    format: uuid
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /food-items/{id}:
+    get:
+      tags: [Food Items]
+      summary: Get a single food item
+      operationId: getFoodItem
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          description: Food item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Food Items]
+      summary: Update a food item
+      operationId: updateFoodItem
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFoodItemRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Food Items]
+      summary: Delete a food item
+      operationId: deleteFoodItem
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /log/today:
+    get:
+      tags: [Log]
+      summary: Get today's log entries with resolved macros
+      operationId: getLogToday
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/DateQuery"
+      responses:
+        "200":
+          description: Array of log entries with computed macros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /log/range:
+    get:
+      tags: [Log]
+      summary: Get per-day calorie totals for a date range (used by calendar view)
+      operationId: getLogRange
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-02-01"
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-02-28"
+      responses:
+        "200":
+          description: Array of daily calorie totals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    date:
+                      type: string
+                      format: date
+                      example: "2026-02-13"
+                    calories:
+                      type: number
+                      format: double
+                      example: 1850.5
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /log/food:
+    post:
+      tags: [Log]
+      summary: Log a food item to a meal
+      operationId: logFood
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogFoodRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /log/{id}:
+    delete:
+      tags: [Log]
+      summary: Delete a log entry
+      operationId: deleteLogEntry
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /body/weight:
+    post:
+      tags: [Body Metrics]
+      summary: Log a body weight measurement
+      operationId: logBodyWeight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BodyWeightRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /activity/daily:
+    post:
+      tags: [Body Metrics]
+      summary: Upsert daily activity (steps and active calories)
+      description: |
+        Creates or updates the daily activity record for the given date.
+        Unique constraint is on `(user_id, date)`.
+      operationId: upsertDailyActivity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DailyActivityRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /presets:
+    post:
+      tags: [Presets]
+      summary: Create a meal preset
+      description: |
+        A preset is a saved collection of food items and/or recipe portions that
+        can be logged in one action via `POST /presets/{id}/apply`.
+      operationId: createPreset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePresetRequest"
+      responses:
+        "201":
+          description: Preset created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  preset_id:
+                    type: string
+                    format: uuid
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /presets/{id}/apply:
+    post:
+      tags: [Presets]
+      summary: Apply a preset (log all preset items)
+      operationId: applyPreset
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: Items logged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  logged_items:
+                    type: integer
+                    example: 3
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /recipes:
+    get:
+      tags: [Recipes]
+      summary: List all recipes
+      operationId: listRecipes
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: Array of recipe summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecipeSummary"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Recipes]
+      summary: Create a recipe
+      description: |
+        Creates both a `food_items` record and a `recipes` record sharing the same
+        UUID. This allows recipes to appear in food item lists and be logged
+        directly as food entries.
+      operationId: createRecipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecipeRequest"
+      responses:
+        "201":
+          description: Recipe created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: string
+                    format: uuid
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /recipes/export-ingredients:
+    post:
+      tags: [Recipes]
+      summary: Export combined ingredients from multiple recipes
+      description: |
+        Returns a merged list of ingredients (summed by food item) across the
+        requested recipes. Useful for batch meal prep calculations.
+      operationId: exportRecipeIngredients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipe_ids]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                  example: "00000000-0000-0000-0000-000000000001"
+                recipe_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  example:
+                    - "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      responses:
+        "200":
+          description: Combined ingredient list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  ingredients:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CombinedIngredient"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /recipes/{id}:
+    get:
+      tags: [Recipes]
+      summary: Get full recipe details including ingredients
+      operationId: getRecipe
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: Recipe detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Recipes]
+      summary: Update recipe metadata
+      operationId: updateRecipe
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecipeRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /recipes/{id}/ingredients:
+    post:
+      tags: [Recipes]
+      summary: Add an ingredient to a recipe
+      operationId: addRecipeIngredient
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddRecipeIngredientRequest"
+      responses:
+        "201":
+          description: Ingredient added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: string
+                    format: uuid
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Recipes]
+      summary: Replace all ingredients for a recipe (bulk update)
+      description: Deletes all existing ingredients and inserts the provided list atomically.
+      operationId: replaceRecipeIngredients
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                  example: "00000000-0000-0000-0000-000000000001"
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [food_item_id, amount_g]
+                    properties:
+                      food_item_id:
+                        type: string
+                        format: uuid
+                      amount_g:
+                        type: number
+                        format: double
+                        example: 200.0
+      responses:
+        "200":
+          description: Ingredients replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  ingredient_count:
+                    type: integer
+                    example: 4
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /recipes/{id}/ingredients/{ingredient_id}:
+    put:
+      tags: [Recipes]
+      summary: Update a single recipe ingredient
+      operationId: updateRecipeIngredient
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+        - name: ingredient_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount_g]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                  example: "00000000-0000-0000-0000-000000000001"
+                amount_g:
+                  type: number
+                  format: double
+                  example: 250.0
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Recipes]
+      summary: Delete a recipe ingredient
+      operationId: deleteRecipeIngredient
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+        - name: ingredient_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /recipes/{id}/shopping-items:
+    get:
+      tags: [Shopping]
+      summary: Get shopping items for a recipe
+      operationId: getRecipeShoppingItems
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          description: Array of shopping items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShoppingItem"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Shopping]
+      summary: Replace all shopping items for a recipe (bulk update)
+      operationId: replaceRecipeShoppingItems
+      parameters:
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                        example: "Chicken breast"
+                      amount:
+                        type: number
+                        format: double
+                        example: 500.0
+                      unit:
+                        type: string
+                        example: "g"
+                      sort_order:
+                        type: integer
+                        example: 0
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /shopping-list:
+    get:
+      tags: [Shopping]
+      summary: Get merged shopping list from multiple recipes
+      operationId: getShoppingList
+      parameters:
+        - name: recipe_ids
+          in: query
+          required: true
+          description: Comma-separated list of recipe UUIDs
+          schema:
+            type: string
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890,b2c3d4e5-f6a7-8901-bcde-f12345678901"
+      responses:
+        "200":
+          description: Merged shopping list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: "Chicken breast"
+                    amount:
+                      type: number
+                      format: double
+                      example: 500.0
+                    unit:
+                      type: string
+                      example: "g"
+                    recipe_name:
+                      type: string
+                      example: "Meal Prep Bowl"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /data/export:
+    get:
+      tags: [Data]
+      summary: Export all user data as JSON
+      operationId: exportData
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: Full data export bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportBundle"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /data/export/markdown:
+    get:
+      tags: [Data]
+      summary: Export user data as a Markdown document
+      operationId: exportDataMarkdown
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          example: "2026-01-01"
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          example: "2026-02-28"
+      responses:
+        "200":
+          description: Markdown document
+          content:
+            text/markdown:
+              schema:
+                type: string
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /data/import:
+    post:
+      tags: [Data]
+      summary: Import data from a previously exported JSON bundle
+      description: |
+        Additive import — does not delete existing data. Conflicting IDs are
+        skipped via `ON CONFLICT DO NOTHING`. The target `user_id` can be
+        overridden via query param.
+      operationId: importData
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportBundle"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  imported_rows:
+                    type: integer
+                    example: 142
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  parameters:
+    PathID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    UserID:
+      name: user_id
+      in: query
+      required: false
+      description: |
+        User UUID. Defaults to `00000000-0000-0000-0000-000000000001`
+        (single-user mode).
+      schema:
+        type: string
+        format: uuid
+      example: "00000000-0000-0000-0000-000000000001"
+
+    DateQuery:
+      name: date
+      in: query
+      required: false
+      description: Date in `YYYY-MM-DD` format. Defaults to today.
+      schema:
+        type: string
+        format: date
+      example: "2026-02-13"
+
+  responses:
+    OK:
+      description: Success
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              ok:
+                type: boolean
+                example: true
+
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "food item not found"
+
+    FoodItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Chicken Breast"
+        brand:
+          type: string
+          example: "Generic"
+        serving_label:
+          type: string
+          example: "100g"
+        calories_per_serving:
+          type: number
+          format: double
+          example: 165.0
+        protein_g_per_serving:
+          type: number
+          format: double
+          example: 31.0
+        carbs_g_per_serving:
+          type: number
+          format: double
+          example: 0.0
+        fat_g_per_serving:
+          type: number
+          format: double
+          example: 3.6
+        fiber_g_per_serving:
+          type: number
+          format: double
+          example: 0.0
+
+    CreateFoodItemRequest:
+      type: object
+      required: [name]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        name:
+          type: string
+          example: "Chicken Breast"
+        brand:
+          type: string
+          example: "Generic"
+        serving_label:
+          type: string
+          example: "100g"
+          default: "1 serving"
+        calories_per_serving:
+          type: number
+          format: double
+          example: 165.0
+        protein_g_per_serving:
+          type: number
+          format: double
+          example: 31.0
+        carbs_g_per_serving:
+          type: number
+          format: double
+          example: 0.0
+        fat_g_per_serving:
+          type: number
+          format: double
+          example: 3.6
+        fiber_g_per_serving:
+          type: number
+          format: double
+          example: 0.0
+        recipe_instructions:
+          type: string
+          example: "Grill at 375°F for 20 minutes."
+        recipe_yield_count:
+          type: integer
+          example: 1
+          default: 1
+        recipe_ingredients:
+          type: array
+          items:
+            type: object
+            required: [food_item_id, amount_g]
+            properties:
+              food_item_id:
+                type: string
+                format: uuid
+              amount_g:
+                type: number
+                format: double
+                example: 100.0
+
+    UpdateFoodItemRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: "Chicken Breast"
+        brand:
+          type: string
+        serving_label:
+          type: string
+          example: "100g"
+        calories_per_serving:
+          type: number
+          format: double
+        protein_g_per_serving:
+          type: number
+          format: double
+        carbs_g_per_serving:
+          type: number
+          format: double
+        fat_g_per_serving:
+          type: number
+          format: double
+        fiber_g_per_serving:
+          type: number
+          format: double
+        recipe_instructions:
+          type: string
+        recipe_yield_count:
+          type: integer
+
+    DashboardResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-02-13"
+        user_id:
+          type: string
+          format: uuid
+        calories_in:
+          type: number
+          format: double
+          example: 1800.0
+        protein_g:
+          type: number
+          format: double
+          example: 120.5
+        carbs_g:
+          type: number
+          format: double
+          example: 200.0
+        fat_g:
+          type: number
+          format: double
+          example: 60.0
+        fiber_g:
+          type: number
+          format: double
+          example: 25.0
+        steps:
+          type: integer
+          example: 8000
+        active_calories_est:
+          type: number
+          format: double
+          example: 450.0
+
+    DayTotalsResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-02-13"
+        entry_count:
+          type: integer
+          example: 6
+        calories_in:
+          type: number
+          format: double
+          example: 1800.0
+        protein_g:
+          type: number
+          format: double
+          example: 120.5
+        carbs_g:
+          type: number
+          format: double
+          example: 200.0
+        fat_g:
+          type: number
+          format: double
+          example: 60.0
+        fiber_g:
+          type: number
+          format: double
+          example: 25.0
+
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        meal:
+          type: string
+          enum: [breakfast, lunch, dinner, snack_1, snack_2, snack_3]
+          example: "breakfast"
+        food_item_id:
+          type: string
+          format: uuid
+        food_name:
+          type: string
+          example: "Chicken Breast"
+        serving_label:
+          type: string
+          example: "100g"
+        servings:
+          type: number
+          format: double
+          example: 1.5
+        calories:
+          type: number
+          format: double
+          example: 247.5
+        protein_g:
+          type: number
+          format: double
+          example: 46.5
+        carbs_g:
+          type: number
+          format: double
+          example: 0.0
+        fat_g:
+          type: number
+          format: double
+          example: 5.4
+        fiber_g:
+          type: number
+          format: double
+          example: 0.0
+        occurred_at:
+          type: string
+          format: date-time
+          example: "2026-02-13T08:30:00-08:00"
+
+    LogFoodRequest:
+      type: object
+      required: [food_item_id, servings]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        food_item_id:
+          type: string
+          format: uuid
+        servings:
+          type: number
+          format: double
+          example: 1.5
+          minimum: 0.001
+        meal:
+          type: string
+          enum: [breakfast, lunch, dinner, snack_1, snack_2, snack_3]
+          default: breakfast
+          example: "breakfast"
+        occurred_at:
+          type: string
+          format: date-time
+          description: RFC3339 timestamp. Defaults to now.
+          example: "2026-02-13T08:30:00-08:00"
+        note:
+          type: string
+          example: "post-workout"
+
+    BodyWeightRequest:
+      type: object
+      required: [weight_kg]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        measured_at:
+          type: string
+          format: date-time
+          description: RFC3339 timestamp. Defaults to now.
+          example: "2026-02-13T07:00:00-08:00"
+        weight_kg:
+          type: number
+          format: double
+          example: 80.5
+          minimum: 0.001
+        note:
+          type: string
+          example: "morning, fasted"
+
+    DailyActivityRequest:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        date:
+          type: string
+          format: date
+          description: Date in YYYY-MM-DD. Defaults to today.
+          example: "2026-02-13"
+        steps:
+          type: integer
+          example: 9500
+        active_calories_est:
+          type: number
+          format: double
+          example: 480.0
+
+    CreatePresetRequest:
+      type: object
+      required: [name, items]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        name:
+          type: string
+          example: "Morning Stack"
+        pinned:
+          type: boolean
+          default: false
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [kind, ref_id, servings]
+            properties:
+              kind:
+                type: string
+                enum: [food, recipe_portion]
+              ref_id:
+                type: string
+                format: uuid
+                description: food_item_id when kind=food; recipe_portion_id when kind=recipe_portion
+              servings:
+                type: number
+                format: double
+                example: 1.0
+
+    RecipeSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Chicken Rice Bowl"
+        brand:
+          type: string
+        serving_label:
+          type: string
+          example: "1 serving"
+        instructions:
+          type: string
+        yield_count:
+          type: integer
+          example: 4
+        calories_per_serving:
+          type: number
+          format: double
+          example: 450.0
+        protein_g_per_serving:
+          type: number
+          format: double
+          example: 35.0
+        carbs_g_per_serving:
+          type: number
+          format: double
+          example: 50.0
+        fat_g_per_serving:
+          type: number
+          format: double
+          example: 10.0
+        fiber_g_per_serving:
+          type: number
+          format: double
+          example: 5.0
+        created_at:
+          type: string
+          format: date-time
+        ingredient_count:
+          type: integer
+          example: 3
+
+    RecipeDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Chicken Rice Bowl"
+        instructions:
+          type: string
+          example: "Cook rice. Grill chicken. Combine."
+        yield_count:
+          type: integer
+          example: 4
+        created_at:
+          type: string
+          format: date-time
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeIngredientDetail"
+
+    RecipeIngredientDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        food_item_id:
+          type: string
+          format: uuid
+        food_name:
+          type: string
+          example: "Chicken Breast"
+        brand:
+          type: string
+          example: "Generic"
+        amount_g:
+          type: number
+          format: double
+          example: 500.0
+
+    CreateRecipeRequest:
+      type: object
+      required: [name]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        name:
+          type: string
+          example: "Chicken Rice Bowl"
+        brand:
+          type: string
+        serving_label:
+          type: string
+          example: "1 serving"
+          default: "1 serving"
+        calories_per_serving:
+          type: number
+          format: double
+          example: 450.0
+        protein_g_per_serving:
+          type: number
+          format: double
+          example: 35.0
+        carbs_g_per_serving:
+          type: number
+          format: double
+          example: 50.0
+        fat_g_per_serving:
+          type: number
+          format: double
+          example: 10.0
+        fiber_g_per_serving:
+          type: number
+          format: double
+          example: 5.0
+        instructions:
+          type: string
+          example: "Cook rice. Grill chicken. Combine."
+        yield_count:
+          type: integer
+          example: 4
+          default: 1
+
+    UpdateRecipeRequest:
+      type: object
+      required: [name]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        name:
+          type: string
+          example: "Chicken Rice Bowl"
+        instructions:
+          type: string
+        yield_count:
+          type: integer
+          example: 4
+
+    AddRecipeIngredientRequest:
+      type: object
+      required: [food_item_id, amount_g]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "00000000-0000-0000-0000-000000000001"
+        food_item_id:
+          type: string
+          format: uuid
+        amount_g:
+          type: number
+          format: double
+          example: 200.0
+          minimum: 0.001
+
+    CombinedIngredient:
+      type: object
+      properties:
+        food_item_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Chicken Breast"
+        brand:
+          type: string
+          example: "Generic"
+        total_g:
+          type: number
+          format: double
+          example: 1000.0
+
+    ShoppingItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        recipe_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Chicken breast"
+        amount:
+          type: number
+          format: double
+          example: 500.0
+        unit:
+          type: string
+          example: "g"
+        sort_order:
+          type: integer
+          example: 0
+
+    ExportBundle:
+      type: object
+      description: Full data export/import bundle
+      properties:
+        version:
+          type: integer
+          example: 1
+        exported_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+          format: uuid
+        food_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportFoodItem"
+        recipes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportRecipe"
+        recipe_ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportRecipeIngredient"
+        recipe_portions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportRecipePortion"
+        presets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportPreset"
+        preset_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportPresetItem"
+        log_entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportLogEntry"
+        body_weights:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportBodyWeight"
+        daily_activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportDailyActivity"
+
+    ExportFoodItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        brand:
+          type: string
+        serving_label:
+          type: string
+        source:
+          type: string
+          example: "custom"
+        calories_per_serving:
+          type: number
+          format: double
+        protein_g_per_serving:
+          type: number
+          format: double
+        carbs_g_per_serving:
+          type: number
+          format: double
+        fat_g_per_serving:
+          type: number
+          format: double
+        fiber_g_per_serving:
+          type: number
+          format: double
+        created_at:
+          type: string
+          format: date-time
+
+    ExportRecipe:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        instructions:
+          type: string
+        yield_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    ExportRecipeIngredient:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        recipe_id:
+          type: string
+          format: uuid
+        food_item_id:
+          type: string
+          format: uuid
+        amount_g:
+          type: number
+          format: double
+        created_at:
+          type: string
+          format: date-time
+
+    ExportRecipePortion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        recipe_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        portion_count:
+          type: number
+          format: double
+        created_at:
+          type: string
+          format: date-time
+
+    ExportPreset:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        pinned:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    ExportPresetItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        preset_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [food, recipe_portion]
+        ref_id:
+          type: string
+          format: uuid
+        servings:
+          type: number
+          format: double
+        created_at:
+          type: string
+          format: date-time
+
+    ExportLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: [food, recipe_portion]
+        ref_id:
+          type: string
+          format: uuid
+        servings:
+          type: number
+          format: double
+        meal:
+          type: string
+        note:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ExportBodyWeight:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        measured_at:
+          type: string
+          format: date-time
+        weight_kg:
+          type: number
+          format: double
+        source:
+          type: string
+          example: "manual"
+        note:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ExportDailyActivity:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        steps:
+          type: integer
+        active_calories_kcal_est:
+          type: number
+          format: double
+        source:
+          type: string
+          example: "manual"
+        created_at:
+          type: string
+          format: date-time

@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    environment:
+      TZ: ${APP_TIMEZONE:-America/Chicago}
+      POSTGRES_DB: ${POSTGRES_DB:-intake}
+      POSTGRES_USER: ${POSTGRES_USER:-intake}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intakepw}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-intake} -d ${POSTGRES_DB:-intake}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./api
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    environment:
+      TZ: ${APP_TIMEZONE:-America/Chicago}
+      API_PORT: "8080"
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Chicago}
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8080}
+        NEXT_PUBLIC_APP_TIMEZONE: ${NEXT_PUBLIC_APP_TIMEZONE:-America/Chicago}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    environment:
+      TZ: ${APP_TIMEZONE:-America/Chicago}
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8080}
+      NEXT_PUBLIC_APP_TIMEZONE: ${NEXT_PUBLIC_APP_TIMEZONE:-America/Chicago}
+      API_INTERNAL_BASE: http://api:8080
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+
+volumes:
+  db_data:
