@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useWeightUnit } from "../context/WeightUnit";
+import { useNutritionGoals, NutritionGoals } from "../context/NutritionGoals";
 import { todayISOInAppTZ } from "../lib/date";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -25,12 +26,17 @@ function datesInRange(from: string, to: string): string[] {
 
 export default function SettingsPage() {
   const { unit, setUnit } = useWeightUnit();
+  const { goals, setGoals } = useNutritionGoals();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState<"export" | "import" | "report" | null>(null);
   const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [waterGoal, setWaterGoal] = useState(DEFAULT_WATER_GOAL);
   const [reportFrom, setReportFrom] = useState(() => addDays(todayISOInAppTZ(), -30));
   const [reportTo, setReportTo] = useState(() => todayISOInAppTZ());
+  const [goalDraft, setGoalDraft] = useState<NutritionGoals>(goals);
+
+  // Keep draft in sync when context loads from localStorage
+  useEffect(() => { setGoalDraft(goals); }, [goals]);
 
   useEffect(() => {
     const raw = Number(localStorage.getItem(WATER_GOAL_KEY));
@@ -77,6 +83,17 @@ export default function SettingsPage() {
     localStorage.setItem(WATER_GOAL_KEY, String(next));
   }
 
+  function onGoalFieldChange(field: keyof NutritionGoals, value: string) {
+    const n = Math.max(0, Math.round(Number(value)));
+    if (!Number.isFinite(n)) return;
+    setGoalDraft(prev => ({ ...prev, [field]: n }));
+  }
+
+  function saveGoals() {
+    setGoals(goalDraft);
+    setStatus({ ok: true, msg: "Nutrition goals saved." });
+  }
+
   async function importData(file: File) {
     setBusy("import");
     setStatus(null);
@@ -94,14 +111,14 @@ export default function SettingsPage() {
       });
       const raw = await res.text();
       console.info("[settings] import response", { url, status: res.status, ok: res.ok, rawPreview: raw.slice(0, 400) });
-      let body: any = null;
+      let body: { error?: string; imported_rows?: number } | null = null;
       try {
         body = raw ? JSON.parse(raw) : null;
       } catch {
         body = null;
       }
       if (!res.ok) throw new Error(body?.error || raw || `import failed (${res.status})`);
-      setStatus({ ok: true, msg: `Import complete (${body.imported_rows ?? 0} rows).` });
+      setStatus({ ok: true, msg: `Import complete (${body?.imported_rows ?? 0} rows).` });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Import failed.";
       setStatus({ ok: false, msg: `Import failed: ${msg}` });
@@ -206,6 +223,25 @@ export default function SettingsPage() {
               onChange={e => onWaterGoalChange(e.target.value)}
               style={{ maxWidth: 140 }}
             />
+          </section>
+
+          <section>
+            <div className="field-label">Nutrition Goals (daily)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              {(["calories", "protein", "carbs", "fat", "fiber"] as const).map(field => (
+                <div key={field}>
+                  <label className="field-label" style={{ fontSize: 11, textTransform: "capitalize" }}>{field} {field === "calories" ? "(kcal)" : "(g)"}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={field === "calories" ? 50 : 5}
+                    value={goalDraft[field]}
+                    onChange={e => onGoalFieldChange(field, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-primary" onClick={saveGoals}>Save Goals</button>
           </section>
 
           <section>

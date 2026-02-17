@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const WATER_GOAL_KEY = "intake_water_goal";
-const WATER_INTAKE_PREFIX = "intake_water_intake_";
 const DEFAULT_GOAL = 8;
+const USER_ID = "00000000-0000-0000-0000-000000000001";
+const API = "/api";
 
 function clampGoal(value: number) {
   if (!Number.isFinite(value)) return DEFAULT_GOAL;
@@ -14,24 +15,30 @@ function clampGoal(value: number) {
 export function WaterTracker({ date }: { date: string }) {
   const [goal, setGoal] = useState(DEFAULT_GOAL);
   const [drank, setDrank] = useState(0);
-  const intakeKey = useMemo(() => `${WATER_INTAKE_PREFIX}${date}`, [date]);
 
+  // Goal stays in localStorage (user preference)
   useEffect(() => {
     const storedGoal = Number(localStorage.getItem(WATER_GOAL_KEY));
     setGoal(clampGoal(storedGoal || DEFAULT_GOAL));
   }, []);
 
+  // Daily intake loaded from API
   useEffect(() => {
-    const stored = Number(localStorage.getItem(intakeKey));
-    const next = Number.isFinite(stored) ? Math.max(0, Math.min(stored, goal)) : 0;
-    setDrank(next);
-  }, [goal, intakeKey]);
+    fetch(`${API}/activity/water?user_id=${USER_ID}&date=${date}`)
+      .then(r => r.ok ? r.json() : { glasses: 0 })
+      .then(data => setDrank(Math.max(0, Number(data.glasses) || 0)))
+      .catch(() => setDrank(0));
+  }, [date]);
 
   function setDrankAt(index: number) {
     const clicked = index + 1;
     const next = clicked === drank ? Math.max(0, drank - 1) : clicked;
     setDrank(next);
-    localStorage.setItem(intakeKey, String(next));
+    fetch(`${API}/activity/water`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: USER_ID, date, glasses: next }),
+    }).catch(() => {});
   }
 
   return (

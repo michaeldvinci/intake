@@ -2,14 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { WaterTracker } from "./components/WaterTracker";
-import { addDaysISO, todayISOInAppTZ } from "./lib/date";
 import { Suspense } from "react";
+import { WaterTracker } from "./components/WaterTracker";
+import { MacroSummaryCard } from "./components/MacroSummaryCard";
+import { MealGroup } from "./components/MealGroup";
+import { LogFoodModal } from "./components/LogFoodModal";
+import { useNutritionGoals } from "./context/NutritionGoals";
+import { addDaysISO, todayISOInAppTZ } from "./lib/date";
 
-const CALORIE_GOAL = 2200;
-const PROTEIN_GOAL = 180;
-const CARBS_GOAL = 220;
-const FAT_GOAL = 70;
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
@@ -98,6 +98,7 @@ export default function Page() {
 function LedgerInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { goals } = useNutritionGoals();
   const today = todayISOInAppTZ();
   const date = searchParams.get("date") || today;
   const isToday = date === today;
@@ -146,7 +147,6 @@ function LedgerInner() {
     const res = await fetch(`${base}/log/${id}`, { method: "DELETE" });
     if (res.ok) {
       setEntries(prev => prev.filter(e => e.id !== id));
-      // Refresh dashboard totals
       const dashRes = await fetch(`${base}/dashboard/today?user_id=${USER_ID}&date=${date}`);
       if (dashRes.ok) setData(await dashRes.json());
     }
@@ -180,7 +180,6 @@ function LedgerInner() {
         }),
       });
       if (res.ok) {
-        // Fire-and-forget pantry deduction
         fetch(`${API}/pantry/deduct?user_id=${USER_ID}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -223,13 +222,8 @@ function LedgerInner() {
     setCreatingItem(false);
   }
 
-  const selectedItem = foodItems.find(f => f.id === selectedFood);
-  const kcalPreview = selectedItem && Number(servings) > 0
-    ? Math.round(Number(servings) * selectedItem.calories_per_serving)
-    : null;
-
   const net = data ? data.calories_in - data.active_calories_est : 0;
-  const remaining = data ? CALORIE_GOAL - data.calories_in : 0;
+  const remaining = data ? goals.calories - data.calories_in : 0;
 
   return (
     <div>
@@ -269,8 +263,8 @@ function LedgerInner() {
               value={Math.round(data.calories_in)}
               unit="kcal"
               accent="var(--accent)"
-              sub={`Goal: ${CALORIE_GOAL} kcal`}
-              pct={data.calories_in / CALORIE_GOAL}
+              sub={`Goal: ${goals.calories} kcal`}
+              pct={data.calories_in / goals.calories}
             />
             <StatCard
               label="Active Burn"
@@ -283,7 +277,7 @@ function LedgerInner() {
               label="Net Calories"
               value={Math.round(net)}
               unit="kcal"
-              accent={net > CALORIE_GOAL ? "var(--danger)" : "var(--accent2)"}
+              accent={net > goals.calories ? "var(--danger)" : "var(--accent2)"}
               sub={remaining >= 0 ? `${Math.round(remaining)} remaining` : `${Math.round(-remaining)} over goal`}
             />
             <StatCard
@@ -295,14 +289,12 @@ function LedgerInner() {
             />
           </div>
 
-          {/* Macros */}
-          <div className="card">
-            <div className="card-label" style={{ marginBottom: 16 }}>Macros</div>
-            <MacroBar label="Protein" value={data.protein_g} goal={PROTEIN_GOAL} color="var(--accent)" />
-            <MacroBar label="Carbs"   value={data.carbs_g}   goal={CARBS_GOAL}   color="var(--accent3)" />
-            <MacroBar label="Fat"     value={data.fat_g}     goal={FAT_GOAL}     color="var(--danger)" />
-            <MacroBar label="Fiber"   value={data.fiber_g}   goal={30}           color="var(--accent2)" />
-          </div>
+          <MacroSummaryCard
+            protein_g={data.protein_g}
+            carbs_g={data.carbs_g}
+            fat_g={data.fat_g}
+            fiber_g={data.fiber_g}
+          />
 
           <WaterTracker date={date} />
 
@@ -314,43 +306,13 @@ function LedgerInner() {
             ) : (
               <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
                 {groupByMeal(entries).map(section => (
-                  <div key={section.meal} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
-                    <div style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      padding: "8px 10px", background: "var(--surface2)", fontSize: 12, fontWeight: 700,
-                    }}>
-                      <span>{mealLabel(section.meal)}</span>
-                      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                        <span style={{ color: "var(--muted)" }}>{Math.round(section.totalKcal)} kcal · <span style={{ color: "var(--accent)" }}>{Math.round(section.totalProtein)}g P</span></span>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => openModal(section.meal)}
-                          style={{ fontSize: 12, padding: "2px 8px" }}
-                        >+ Add</button>
-                      </div>
-                    </div>
-                    <div style={{ display: "grid", gap: 1 }}>
-                      {section.entries.map(e => (
-                        <div key={e.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, padding: "8px 10px", alignItems: "center" }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600 }}>{e.food_name}</div>
-                            <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                              {e.servings === 1 ? e.serving_label : `${e.servings} × ${e.serving_label}`}
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap", textAlign: "right" }}>
-                            <span>{Math.round(e.calories)} kcal</span>
-                            <span style={{ color: "var(--accent)", marginLeft: 8 }}>{e.protein_g.toFixed(1)}g P</span>
-                          </div>
-                          <button
-                            onClick={() => deleteEntry(e.id)}
-                            style={{ background: "none", color: "var(--muted)", fontSize: 16, lineHeight: 1, padding: "0 2px" }}
-                            title="Remove"
-                          >×</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <MealGroup
+                    key={section.meal}
+                    section={section}
+                    mealLabel={mealLabel}
+                    onDelete={deleteEntry}
+                    onOpenLog={openModal}
+                  />
                 ))}
               </div>
             )}
@@ -376,81 +338,22 @@ function LedgerInner() {
 
       {/* Add food modal */}
       {modalMeal && (
-        <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
-          <div className="modal">
-            <div className="modal-title">Add to {mealLabel(modalMeal)}</div>
-            <div style={{ display: "grid", gap: 14 }}>
-              <div style={{ position: "relative" }}>
-                <label className="field-label">Food item</label>
-                <input
-                  autoFocus
-                  placeholder="Search…"
-                  value={foodSearch}
-                  onChange={e => { setFoodSearch(e.target.value); setSelectedFood(""); }}
-                />
-                {foodSearch.trim() && !selectedFood && (() => {
-                  const q = foodSearch.trim().toLowerCase();
-                  const matches = foodItems.filter(f =>
-                    f.name.toLowerCase().includes(q) || (f.brand && f.brand.toLowerCase().includes(q))
-                  ).slice(0, 8);
-                  return matches.length > 0 ? (
-                    <div style={{
-                      position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
-                      background: "var(--surface)", border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-sm)", boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-                      maxHeight: 220, overflowY: "auto",
-                    }}>
-                      {matches.map(f => (
-                        <div
-                          key={f.id}
-                          onMouseDown={() => { setSelectedFood(f.id); setFoodSearch(f.name + (f.brand ? ` (${f.brand})` : "")); setServings("1"); }}
-                          style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--border)" }}
-                          onMouseEnter={e => (e.currentTarget.style.background = "var(--surface2)")}
-                          onMouseLeave={e => (e.currentTarget.style.background = "")}
-                        >
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{f.name}{f.brand ? ` (${f.brand})` : ""}</div>
-                          <div style={{ fontSize: 11, color: "var(--muted)" }}>{f.serving_label} · {Math.round(f.calories_per_serving)} kcal · {f.protein_g_per_serving}g P</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-              <div>
-                <label className="field-label">Servings</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={servings}
-                  onChange={e => setServings(e.target.value)}
-                  min={0.25}
-                  step={0.5}
-                />
-                {kcalPreview !== null && (
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>~{kcalPreview} kcal</div>
-                )}
-              </div>
-              {logError && <div className="pill pill-err">{logError}</div>}
-            </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 20, alignItems: "center" }}>
-              <button
-                className="btn btn-ghost"
-                style={{ fontSize: 12, marginRight: "auto" }}
-                onClick={() => { closeModal(); setShowNewItem(true); setNewItemName(""); setNewItemError(null); }}
-              >
-                + New item
-              </button>
-              <button className="btn btn-ghost" onClick={closeModal}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                onClick={submitLog}
-                disabled={!selectedFood || Number(servings) <= 0 || logging}
-              >
-                {logging ? "…" : "Add"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <LogFoodModal
+          meal={modalMeal}
+          foodItems={foodItems}
+          foodSearch={foodSearch}
+          selectedFood={selectedFood}
+          servings={servings}
+          logging={logging}
+          logError={logError}
+          mealLabel={mealLabel}
+          onFoodSearchChange={val => { setFoodSearch(val); setSelectedFood(""); }}
+          onFoodSelect={(id, name, brand) => { setSelectedFood(id); setFoodSearch(name + (brand ? ` (${brand})` : "")); setServings("1"); }}
+          onServingsChange={setServings}
+          onClose={closeModal}
+          onSubmit={submitLog}
+          onNewItem={() => { closeModal(); setShowNewItem(true); setNewItemName(""); setNewItemError(null); }}
+        />
       )}
 
       {/* New item modal */}
@@ -508,19 +411,6 @@ function StatCard({
           <div style={{ height: "100%", width: `${Math.min(pct * 100, 100)}%`, background: accent, borderRadius: 99, transition: "width 0.4s" }} />
         </div>
       )}
-    </div>
-  );
-}
-
-function MacroBar({ label, value, goal, color }: { label: string; value: number; goal: number; color: string }) {
-  const pct = Math.min((value / goal) * 100, 100);
-  return (
-    <div className="macro-row">
-      <div className="macro-label">{label}</div>
-      <div className="macro-bar-track">
-        <div className="macro-bar-fill" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <div className="macro-val">{Math.round(value)}<span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>g</span></div>
     </div>
   );
 }

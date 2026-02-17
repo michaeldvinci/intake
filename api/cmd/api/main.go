@@ -106,6 +106,8 @@ func main() {
 	r.Delete("/log/{id}", app.HandleDeleteLogEntry)
 	r.Post("/body/weight", app.HandleBodyWeight)
 	r.Post("/activity/daily", app.HandleDailyActivity)
+	r.Get("/activity/water", app.HandleGetWater)
+	r.Post("/activity/water", app.HandleSetWater)
 	r.Post("/presets", app.HandleCreatePreset)
 	r.Post("/presets/{id}/apply", app.HandleApplyPreset)
 	r.Get("/recipes", app.HandleListRecipes)
@@ -784,6 +786,64 @@ func (a *App) HandleDailyActivity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, map[string]any{"ok": true})
 }
 
+func (a *App) HandleGetWater(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = "00000000-0000-0000-0000-000000000001"
+	}
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		date = a.now().Format("2006-01-02")
+	}
+
+	var glasses int
+	err := a.DB.QueryRow(r.Context(), `
+		SELECT COALESCE(water_glasses, 0)
+		FROM daily_activity
+		WHERE user_id = $1 AND date = $2
+	`, userID, date).Scan(&glasses)
+	if err != nil {
+		// No row means no water logged yet
+		glasses = 0
+	}
+	writeJSON(w, 200, map[string]any{"glasses": glasses})
+}
+
+type SetWaterRequest struct {
+	UserID  string `json:"user_id"`
+	Date    string `json:"date"`
+	Glasses int    `json:"glasses"`
+}
+
+func (a *App) HandleSetWater(w http.ResponseWriter, r *http.Request) {
+	var req SetWaterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+	if req.UserID == "" {
+		req.UserID = "00000000-0000-0000-0000-000000000001"
+	}
+	if req.Date == "" {
+		req.Date = a.now().Format("2006-01-02")
+	}
+	if req.Glasses < 0 {
+		req.Glasses = 0
+	}
+
+	_, err := a.DB.Exec(r.Context(), `
+		INSERT INTO daily_activity (user_id, date, steps, active_calories_kcal_est, water_glasses, source)
+		VALUES ($1, $2, 0, 0, $3, 'manual')
+		ON CONFLICT (user_id, date) DO UPDATE SET
+			water_glasses = EXCLUDED.water_glasses;
+	`, req.UserID, req.Date, req.Glasses)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("upsert water: %v", err)})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
 // ── Presets ───────────────────────────────────────────────────────────────────
 
 type CreatePresetRequest struct {
@@ -1426,6 +1486,7 @@ type ExportDailyActivity struct {
 	Date          string    `json:"date"`
 	Steps         int       `json:"steps"`
 	ActiveKcalEst float64   `json:"active_calories_kcal_est"`
+	WaterGlasses  int       `json:"water_glasses"`
 	Source        string    `json:"source"`
 	CreatedAt     time.Time `json:"created_at"`
 }
@@ -1626,7 +1687,7 @@ func (a *App) HandleExportData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	activityRows, err := a.DB.Query(ctx, `
-    SELECT user_id::text, date, steps, active_calories_kcal_est, source, created_at
+    SELECT user_id::text, date, steps, active_calories_kcal_est, COALESCE(water_glasses, 0), source, created_at
     FROM daily_activity
     WHERE user_id = $1
     ORDER BY date;
@@ -1639,7 +1700,7 @@ func (a *App) HandleExportData(w http.ResponseWriter, r *http.Request) {
 	for activityRows.Next() {
 		var it ExportDailyActivity
 		var dateVal time.Time
-		if err := activityRows.Scan(&it.UserID, &dateVal, &it.Steps, &it.ActiveKcalEst, &it.Source, &it.CreatedAt); err != nil {
+		if err := activityRows.Scan(&it.UserID, &dateVal, &it.Steps, &it.ActiveKcalEst, &it.WaterGlasses, &it.Source, &it.CreatedAt); err != nil {
 			writeJSON(w, 500, map[string]any{"error": "export daily_activity scan"})
 			return
 		}
