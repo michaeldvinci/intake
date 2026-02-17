@@ -1,6 +1,7 @@
 "use client";
 
 import { WeightUnitProvider } from "../context/WeightUnit";
+import { NutritionGoalsProvider } from "../context/NutritionGoals";
 
 function SidebarInner() {
   return (
@@ -51,8 +52,10 @@ function SidebarInner() {
 export function Sidebar({ children }: { children: React.ReactNode }) {
   return (
     <WeightUnitProvider>
-      <SidebarInner />
-      {children}
+      <NutritionGoalsProvider>
+        <SidebarInner />
+        {children}
+      </NutritionGoalsProvider>
     </WeightUnitProvider>
   );
 }

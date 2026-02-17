@@ -1,15 +1,10 @@
-// settings.ts
-
-// Constants for Nutrition Goals
-export const NUTRITION_GOALS = {
-    dailyCaloricIntake: 2000,
-    proteinGoal: 150,
-    carbohydrateGoal: 250,
-    fatGoal: 70,
+// Default values for nutrition goals (used when no user preference is stored)
+export const DEFAULT_NUTRITION_GOALS = {
+  calories: 2200,
+  protein: 180,
+  carbs: 220,
+  fat: 70,
+  fiber: 30,
 };
 
-// Configuration for Water Settings
-export const WATER_SETTINGS = {
-    dailyWaterIntake: 3.7, // in liters
-    reminderFrequency: 60, // in minutes
-};
+export const NUTRITION_GOALS_KEY = "intake_nutrition_goals";
