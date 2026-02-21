@@ -1,44 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import {
+  FOOD_GROUPS,
+  slugToLabel,
+  normName,
+  fetchCategories,
+  saveCategory as saveCategoryAPI,
+} from "../lib/categories";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
-
-// ---------------------------------------------------------------------------
-// Food group taxonomy — shared with shopping page
-// ---------------------------------------------------------------------------
-const FOOD_GROUPS: { slug: string; label: string }[] = [
-  { slug: "produce",            label: "Produce" },
-  { slug: "meat-seafood",       label: "Meat & Seafood" },
-  { slug: "dairy-refrigerated", label: "Dairy & Refrigerated" },
-  { slug: "pantry-dry-goods",   label: "Pantry/Dry Goods" },
-  { slug: "spices-oils",        label: "Spices & Oils" },
-  { slug: "frozen",             label: "Frozen" },
-];
-
-function slugToLabel(slug: string) {
-  return FOOD_GROUPS.find(g => g.slug === slug)?.label ?? "Other";
-}
-
-function normName(name: string) {
-  return name.trim().toLowerCase();
-}
-
-function loadCategories(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem("ingredient_categories") || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveCategory(name: string, slug: string) {
-  const cats = loadCategories();
-  cats[normName(name)] = slug;
-  localStorage.setItem("ingredient_categories", JSON.stringify(cats));
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,8 +42,7 @@ type FoodSearchResult = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function attachCategories(items: PantryItem[]): PantryItemWithCategory[] {
-  const cats = loadCategories();
+function attachCategories(items: PantryItem[], cats: Record<string, string>): PantryItemWithCategory[] {
   return items.map(it => ({
     ...it,
     category: cats[normName(it.food_name)] ?? "",
@@ -126,15 +98,19 @@ export default function PantryPage() {
 
   const [editQty, setEditQty] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-
+  const catsRef = useRef<Record<string, string>>({});
 
   const loadPantry = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/pantry?user_id=${USER_ID}`);
+      const [res, cats] = await Promise.all([
+        fetch(`${API}/pantry?user_id=${USER_ID}`),
+        fetchCategories(),
+      ]);
+      catsRef.current = cats;
       if (res.ok) {
         const data: PantryItem[] = await res.json();
         setRawItems(data);
-        setItems(attachCategories(data));
+        setItems(attachCategories(data, cats));
       }
     } finally {
       setLoading(false);
@@ -211,8 +187,9 @@ export default function PantryPage() {
   }
 
   function setCategory(item: PantryItemWithCategory, slug: string) {
-    saveCategory(item.food_name, slug);
-    setItems(attachCategories(rawItems));
+    saveCategoryAPI(item.food_name, slug);
+    catsRef.current[normName(item.food_name)] = slug;
+    setItems(attachCategories(rawItems, catsRef.current));
   }
 
   function commitEdit(item: PantryItemWithCategory) {

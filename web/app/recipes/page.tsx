@@ -1,39 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  GROUP_ORDER,
+  slugToLabel,
+  normName,
+  fetchCategories,
+} from "../lib/categories";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
-
-// ---------------------------------------------------------------------------
-// Food group taxonomy (mirrors recipes/[id]/page.tsx)
-// ---------------------------------------------------------------------------
-const FOOD_GROUPS: { slug: string; label: string }[] = [
-  { slug: "produce",            label: "Produce" },
-  { slug: "meat-seafood",       label: "Meat & Seafood" },
-  { slug: "dairy-refrigerated", label: "Dairy & Refrigerated" },
-  { slug: "pantry-dry-goods",   label: "Pantry/Dry Goods" },
-  { slug: "spices-oils",        label: "Spices & Oils" },
-  { slug: "frozen",             label: "Frozen" },
-];
-
-const GROUP_ORDER = Object.fromEntries(FOOD_GROUPS.map((g, i) => [g.slug, i]));
-
-function slugToLabel(slug: string): string {
-  return FOOD_GROUPS.find(g => g.slug === slug)?.label ?? slug;
-}
-
-function loadCategories(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem("ingredient_categories") || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function normName(name: string) {
-  return name.trim().toLowerCase();
-}
 
 type Item = {
   id: string;
@@ -137,6 +113,7 @@ export default function RecipesPage() {
   const [viewItem, setViewItem] = useState<Item | null>(null);
   const [viewIngredients, setViewIngredients] = useState<ShoppingItem[]>([]);
   const [loadingIngredients, setLoadingIngredients] = useState(false);
+  const catsRef = useRef<Record<string, string>>({});
 
   async function load() {
     setLoading(true);
@@ -145,7 +122,10 @@ export default function RecipesPage() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetchCategories().then(cats => { catsRef.current = cats; });
+  }, []);
 
   async function openView(item: Item) {
     setViewItem(item);
@@ -389,7 +369,7 @@ export default function RecipesPage() {
                 ) : viewIngredients.length === 0 ? (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>No ingredients listed.</div>
                 ) : (() => {
-                  const cats = loadCategories();
+                  const cats = catsRef.current;
                   // Attach category to each ingredient
                   const withCat = viewIngredients.map(ing => ({
                     ...ing,
