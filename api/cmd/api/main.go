@@ -136,6 +136,8 @@ func main() {
 	r.Put("/ingredient-categories/set", app.HandleSetIngredientCategoryBody)
 	r.Put("/ingredient-categories/{name}", app.HandleSetIngredientCategory)
 	r.Delete("/ingredient-categories/{name}", app.HandleDeleteIngredientCategory)
+	r.Get("/settings", app.HandleGetSettings)
+	r.Put("/settings", app.HandlePutSetting)
 	r.Get("/nudges", app.HandleListNudges)
 	r.Post("/nudges", app.HandleCreateNudge)
 	r.Put("/nudges/{id}", app.HandleUpdateNudge)
@@ -154,8 +156,12 @@ func main() {
 			gocron.DurationJob(1*time.Minute),
 			gocron.NewTask(app.checkNudges),
 		)
+		_, _ = s.NewJob(
+			gocron.DailyJob(1, gocron.NewAtTimes(gocron.NewAtTime(8, 0, 0))),
+			gocron.NewTask(app.checkPantryExpirations),
+		)
 		s.Start()
-		log.Println("nudge scheduler started (1-min check)")
+		log.Println("scheduler started (nudges: 1-min, pantry expiry: daily 8am)")
 	}
 
 	srv := &http.Server{Addr: ":" + port, Handler: r, ReadHeaderTimeout: 5 * time.Second}
@@ -2421,6 +2427,7 @@ type PantryItem struct {
 	FatGPerServing     float64 `json:"fat_g_per_serving"`
 	Quantity   float64 `json:"quantity"`
 	UpdatedAt  string  `json:"updated_at"`
+	ExpiresAt  *string `json:"expires_at"`
 }
 
 func (a *App) HandleListPantry(w http.ResponseWriter, r *http.Request) {
@@ -2431,7 +2438,7 @@ func (a *App) HandleListPantry(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.DB.Query(r.Context(), `
 		SELECT fi.id, fi.name, COALESCE(fi.brand,''), COALESCE(fi.serving_label,'1 serving'),
 		       fi.calories_per_serving, fi.protein_g_per_serving, fi.carbs_g_per_serving, fi.fat_g_per_serving,
-		       p.quantity, p.updated_at
+		       p.quantity, p.updated_at, p.expires_at
 		FROM pantry_items p
 		JOIN food_items fi ON fi.id = p.food_item_id
 		WHERE p.user_id = $1
@@ -2446,14 +2453,19 @@ func (a *App) HandleListPantry(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var it PantryItem
 		var updatedAt interface{}
+		var expiresAt *time.Time
 		if err := rows.Scan(&it.FoodItemID, &it.FoodName, &it.Brand, &it.ServingLabel,
 			&it.CaloriesPerServing, &it.ProteinGPerServing, &it.CarbsGPerServing, &it.FatGPerServing,
-			&it.Quantity, &updatedAt); err != nil {
+			&it.Quantity, &updatedAt, &expiresAt); err != nil {
 			writeJSON(w, 500, map[string]any{"error": "scan pantry"})
 			return
 		}
 		if t, ok := updatedAt.(interface{ Format(string) string }); ok {
 			it.UpdatedAt = t.Format(time.RFC3339)
+		}
+		if expiresAt != nil {
+			s := expiresAt.Format("2006-01-02")
+			it.ExpiresAt = &s
 		}
 		items = append(items, it)
 	}
@@ -2467,18 +2479,28 @@ func (a *App) HandleUpsertPantry(w http.ResponseWriter, r *http.Request) {
 	}
 	foodItemID := chi.URLParam(r, "food_item_id")
 	var req struct {
-		Quantity float64 `json:"quantity"`
+		Quantity  float64 `json:"quantity"`
+		ExpiresAt *string `json:"expires_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
+	var expiresAt interface{}
+	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
+		t, err := time.Parse("2006-01-02", *req.ExpiresAt)
+		if err != nil {
+			writeJSON(w, 400, map[string]any{"error": "invalid expires_at date format (YYYY-MM-DD)"})
+			return
+		}
+		expiresAt = t
+	}
 	_, err := a.DB.Exec(r.Context(), `
-		INSERT INTO pantry_items (user_id, food_item_id, quantity, updated_at)
-		VALUES ($1, $2, $3, now())
+		INSERT INTO pantry_items (user_id, food_item_id, quantity, updated_at, expires_at)
+		VALUES ($1, $2, $3, now(), $4)
 		ON CONFLICT (user_id, food_item_id)
-		DO UPDATE SET quantity = EXCLUDED.quantity, updated_at = now()
-	`, userID, foodItemID, req.Quantity)
+		DO UPDATE SET quantity = EXCLUDED.quantity, updated_at = now(), expires_at = EXCLUDED.expires_at
+	`, userID, foodItemID, req.Quantity, expiresAt)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("upsert pantry: %v", err)})
 		return
@@ -2825,16 +2847,17 @@ func (a *App) HandleTestNudge(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "nudge not found"})
 		return
 	}
-	if err := fireDiscordWebhook(webhookURL, foodName); err != nil {
+	msg := fmt.Sprintf("🔔 **Nudge:** You haven't logged **%s** yet today!", foodName)
+	if err := fireDiscordWebhook(webhookURL, msg); err != nil {
 		writeJSON(w, 502, map[string]any{"error": fmt.Sprintf("webhook failed: %v", err)})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "message": "webhook fired"})
 }
 
-func fireDiscordWebhook(webhookURL, foodName string) error {
+func fireDiscordWebhook(webhookURL, message string) error {
 	body, _ := json.Marshal(map[string]string{
-		"content": fmt.Sprintf("🔔 **Nudge:** You haven't logged **%s** yet today!", foodName),
+		"content": message,
 	})
 	resp, err := http.Post(webhookURL, "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -2894,11 +2917,148 @@ func (a *App) checkNudges() {
 		}
 		if count == 0 {
 			log.Printf("[nudge] firing webhook for %s (not logged today)", p.foodName)
-			if err := fireDiscordWebhook(p.webhookURL, p.foodName); err != nil {
+			msg := fmt.Sprintf("🔔 **Nudge:** You haven't logged **%s** yet today!", p.foodName)
+			if err := fireDiscordWebhook(p.webhookURL, msg); err != nil {
 				log.Printf("[nudge] webhook error for %s: %v", p.foodName, err)
 			}
 		} else {
 			log.Printf("[nudge] %s already logged today (%d entries), skipping", p.foodName, count)
+		}
+	}
+}
+
+// ── User Settings ────────────────────────────────────────────────────────────
+
+func (a *App) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	rows, err := a.DB.Query(r.Context(), `
+		SELECT key, value FROM user_settings WHERE user_id = $1
+	`, userID)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("query: %v", err)})
+		return
+	}
+	defer rows.Close()
+	settings := map[string]string{}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "scan"})
+			return
+		}
+		settings[k] = v
+	}
+	writeJSON(w, 200, settings)
+}
+
+func (a *App) HandlePutSetting(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	var req struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+	if req.Key == "" {
+		writeJSON(w, 400, map[string]any{"error": "key is required"})
+		return
+	}
+	_, err := a.DB.Exec(r.Context(), `
+		INSERT INTO user_settings (user_id, key, value)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value
+	`, userID, req.Key, req.Value)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("upsert: %v", err)})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// ── Pantry Expiration Checker ────────────────────────────────────────────────
+
+func (a *App) checkPantryExpirations() {
+	now := a.now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, a.Loc)
+	tomorrow := today.AddDate(0, 0, 1)
+
+	// Get all users with pantry expiration webhook configured
+	rows, err := a.DB.Query(context.Background(), `
+		SELECT us.user_id, us.value
+		FROM user_settings us
+		WHERE us.key = 'pantry_expiration_webhook' AND us.value != ''
+	`)
+	if err != nil {
+		log.Printf("[pantry-expiry] settings query error: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	type userWebhook struct {
+		userID, webhookURL string
+	}
+	var users []userWebhook
+	for rows.Next() {
+		var uw userWebhook
+		if err := rows.Scan(&uw.userID, &uw.webhookURL); err != nil {
+			continue
+		}
+		users = append(users, uw)
+	}
+
+	for _, uw := range users {
+		// Find items expiring today or tomorrow
+		itemRows, err := a.DB.Query(context.Background(), `
+			SELECT fi.name, p.quantity, p.expires_at
+			FROM pantry_items p
+			JOIN food_items fi ON fi.id = p.food_item_id
+			WHERE p.user_id = $1 AND p.quantity > 0
+			  AND p.expires_at IS NOT NULL
+			  AND p.expires_at <= $2
+			ORDER BY p.expires_at
+		`, uw.userID, tomorrow)
+		if err != nil {
+			log.Printf("[pantry-expiry] item query error for user %s: %v", uw.userID, err)
+			continue
+		}
+
+		var messages []string
+		for itemRows.Next() {
+			var name string
+			var qty float64
+			var expiresAt time.Time
+			if err := itemRows.Scan(&name, &qty, &expiresAt); err != nil {
+				continue
+			}
+			expDate := time.Date(expiresAt.Year(), expiresAt.Month(), expiresAt.Day(), 0, 0, 0, 0, a.Loc)
+			qtyStr := fmt.Sprintf("%.0f", qty)
+			if qty != float64(int(qty)) {
+				qtyStr = fmt.Sprintf("%.1f", qty)
+			}
+			if expDate.Before(today) {
+				messages = append(messages, fmt.Sprintf("🚨 **Expired:** %s (qty: %s)", name, qtyStr))
+			} else if expDate.Equal(today) {
+				messages = append(messages, fmt.Sprintf("⚠️ **Expiring today:** %s (qty: %s)", name, qtyStr))
+			} else {
+				messages = append(messages, fmt.Sprintf("📅 **Expiring tomorrow:** %s (qty: %s)", name, qtyStr))
+			}
+		}
+		itemRows.Close()
+
+		if len(messages) > 0 {
+			msg := "🥫 **Pantry Expiration Alert**\n" + strings.Join(messages, "\n")
+			log.Printf("[pantry-expiry] sending %d alerts for user %s", len(messages), uw.userID)
+			if err := fireDiscordWebhook(uw.webhookURL, msg); err != nil {
+				log.Printf("[pantry-expiry] webhook error: %v", err)
+			}
 		}
 	}
 }

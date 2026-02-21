@@ -34,6 +34,9 @@ export default function SettingsPage() {
   const [reportFrom, setReportFrom] = useState(() => addDays(todayISOInAppTZ(), -30));
   const [reportTo, setReportTo] = useState(() => todayISOInAppTZ());
   const [goalDraft, setGoalDraft] = useState<NutritionGoals>(goals);
+  const [pantryWebhook, setPantryWebhook] = useState("");
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookTesting, setWebhookTesting] = useState(false);
 
   // Keep draft in sync when context loads from localStorage
   useEffect(() => { setGoalDraft(goals); }, [goals]);
@@ -42,6 +45,13 @@ export default function SettingsPage() {
     const raw = Number(localStorage.getItem(WATER_GOAL_KEY));
     const next = Number.isFinite(raw) ? Math.max(1, Math.min(24, Math.round(raw))) : DEFAULT_WATER_GOAL;
     setWaterGoal(next);
+    // Load pantry webhook from API settings
+    fetch(`${API}/settings?user_id=${USER_ID}`)
+      .then(r => r.ok ? r.json() : {})
+      .then((s: Record<string, string>) => {
+        if (s.pantry_expiration_webhook) setPantryWebhook(s.pantry_expiration_webhook);
+      })
+      .catch(() => {});
   }, []);
 
   async function exportData() {
@@ -92,6 +102,45 @@ export default function SettingsPage() {
   function saveGoals() {
     setGoals(goalDraft);
     setStatus({ ok: true, msg: "Nutrition goals saved." });
+  }
+
+  async function savePantryWebhook() {
+    setWebhookSaving(true);
+    setStatus(null);
+    try {
+      await fetch(`${API}/settings?user_id=${USER_ID}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "pantry_expiration_webhook", value: pantryWebhook.trim() }),
+      });
+      setStatus({ ok: true, msg: "Webhook URL saved." });
+    } catch {
+      setStatus({ ok: false, msg: "Failed to save webhook URL." });
+    } finally {
+      setWebhookSaving(false);
+    }
+  }
+
+  async function testPantryWebhook() {
+    if (!pantryWebhook.trim()) return;
+    setWebhookTesting(true);
+    setStatus(null);
+    try {
+      const res = await fetch(pantryWebhook.trim(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "🧪 **Test:** Pantry expiration notifications are working!" }),
+      });
+      if (res.ok || res.status === 204) {
+        setStatus({ ok: true, msg: "Test notification sent! Check Discord." });
+      } else {
+        setStatus({ ok: false, msg: `Webhook returned ${res.status}.` });
+      }
+    } catch {
+      setStatus({ ok: false, msg: "Failed to reach webhook URL." });
+    } finally {
+      setWebhookTesting(false);
+    }
   }
 
   async function importData(file: File) {
@@ -242,6 +291,39 @@ export default function SettingsPage() {
               ))}
             </div>
             <button className="btn btn-primary" onClick={saveGoals}>Save Goals</button>
+          </section>
+
+          <section>
+            <div className="field-label">Notifications</div>
+            <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+              Get Discord notifications when pantry items are about to expire. Checked daily at 8 AM.
+            </p>
+            <div style={{ marginBottom: 8 }}>
+              <label className="field-label" style={{ fontSize: 11 }}>Pantry Expiration Webhook</label>
+              <input
+                type="url"
+                placeholder="https://discord.com/api/webhooks/..."
+                value={pantryWebhook}
+                onChange={e => setPantryWebhook(e.target.value)}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="btn btn-primary"
+                onClick={savePantryWebhook}
+                disabled={webhookSaving}
+              >
+                {webhookSaving ? "Saving…" : "Save Webhook"}
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={testPantryWebhook}
+                disabled={webhookTesting || !pantryWebhook.trim()}
+              >
+                {webhookTesting ? "Sending…" : "Test"}
+              </button>
+            </div>
           </section>
 
           <section>
