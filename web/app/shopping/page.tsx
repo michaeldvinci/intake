@@ -1,39 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  GROUP_ORDER,
+  slugToLabel,
+  normName,
+  fetchCategories,
+} from "../lib/categories";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
-
-// ---------------------------------------------------------------------------
-// Food group taxonomy
-// ---------------------------------------------------------------------------
-const FOOD_GROUPS: { slug: string; label: string }[] = [
-  { slug: "produce",            label: "Produce" },
-  { slug: "meat-seafood",       label: "Meat & Seafood" },
-  { slug: "dairy-refrigerated", label: "Dairy & Refrigerated" },
-  { slug: "pantry-dry-goods",   label: "Pantry/Dry Goods" },
-  { slug: "spices-oils",        label: "Spices & Oils" },
-  { slug: "frozen",             label: "Frozen" },
-];
-
-const GROUP_ORDER = Object.fromEntries(FOOD_GROUPS.map((g, i) => [g.slug, i]));
-
-function slugToLabel(slug: string): string {
-  return FOOD_GROUPS.find(g => g.slug === slug)?.label ?? slug;
-}
-
-function loadCategories(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem("ingredient_categories") || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function normName(name: string) {
-  return name.trim().toLowerCase();
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,8 +39,7 @@ type MergedItem = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function mergeAndCategorise(items: ShoppingEntry[]): MergedItem[] {
-  const cats = loadCategories();
+function mergeAndCategorise(items: ShoppingEntry[], cats: Record<string, string>): MergedItem[] {
   const map = new Map<string, MergedItem>();
 
   for (const it of items) {
@@ -119,12 +94,14 @@ export default function ShoppingPage() {
   const [listItems, setListItems] = useState<ShoppingEntry[] | null>(null);
   const [generating, setGenerating] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const catsRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     fetch(`${API}/recipes?user_id=${USER_ID}`)
       .then(r => r.ok ? r.json() : [])
       .then(setRecipes)
       .finally(() => setLoading(false));
+    fetchCategories().then(cats => { catsRef.current = cats; });
   }, []);
 
   function toggle(id: string) {
@@ -163,7 +140,7 @@ export default function ShoppingPage() {
 
   function exportMarkdown() {
     if (!listItems || listItems.length === 0) return;
-    const merged = mergeAndCategorise(listItems);
+    const merged = mergeAndCategorise(listItems, catsRef.current);
     const groups = groupByCategory(merged);
     const lines: string[] = ["# Shopping List\n"];
     for (const group of groups) {
@@ -180,7 +157,7 @@ export default function ShoppingPage() {
     URL.revokeObjectURL(url);
   }
 
-  const merged = listItems ? mergeAndCategorise(listItems) : [];
+  const merged = listItems ? mergeAndCategorise(listItems, catsRef.current) : [];
   const groups = groupByCategory(merged);
 
   return (

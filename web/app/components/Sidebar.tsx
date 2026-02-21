@@ -34,6 +34,10 @@ function SidebarInner() {
         <i className="fa-solid fa-box-open nav-icon" />
         Pantry
       </a>
+      <a href="/nudge" className="nav-link">
+        <i className="fa-solid fa-bell nav-icon" />
+        Nudge
+      </a>
       <a href="/metrics" className="nav-link">
         <i className="fa-solid fa-chart-line nav-icon" />
         Metrics

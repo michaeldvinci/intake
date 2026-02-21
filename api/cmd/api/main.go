@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-co-op/gocron/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -129,9 +131,32 @@ func main() {
 	r.Put("/pantry/{food_item_id}", app.HandleUpsertPantry)
 	r.Delete("/pantry/{food_item_id}", app.HandleDeletePantry)
 	r.Post("/pantry/deduct", app.HandleDeductPantry)
+	r.Get("/ingredient-categories", app.HandleListIngredientCategories)
+	r.Put("/ingredient-categories", app.HandleReplaceIngredientCategories)
+	r.Put("/ingredient-categories/set", app.HandleSetIngredientCategoryBody)
+	r.Put("/ingredient-categories/{name}", app.HandleSetIngredientCategory)
+	r.Delete("/ingredient-categories/{name}", app.HandleDeleteIngredientCategory)
+	r.Get("/nudges", app.HandleListNudges)
+	r.Post("/nudges", app.HandleCreateNudge)
+	r.Put("/nudges/{id}", app.HandleUpdateNudge)
+	r.Delete("/nudges/{id}", app.HandleDeleteNudge)
+	r.Post("/nudges/{id}/test", app.HandleTestNudge)
 	r.Get("/data/export", app.HandleExportData)
 	r.Get("/data/export/markdown", app.HandleExportMarkdown)
 	r.Post("/data/import", app.HandleImportData)
+
+	// Start nudge scheduler
+	s, err := gocron.NewScheduler(gocron.WithLocation(loc))
+	if err != nil {
+		log.Printf("nudge scheduler init failed: %v", err)
+	} else {
+		_, _ = s.NewJob(
+			gocron.DurationJob(1*time.Minute),
+			gocron.NewTask(app.checkNudges),
+		)
+		s.Start()
+		log.Println("nudge scheduler started (1-min check)")
+	}
 
 	srv := &http.Server{Addr: ":" + port, Handler: r, ReadHeaderTimeout: 5 * time.Second}
 	log.Printf("api listening on :%s", port)
@@ -2500,4 +2525,380 @@ func (a *App) HandleDeductPantry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// ── Ingredient Categories ─────────────────────────────────────────────────────
+
+type IngredientCategory struct {
+	IngredientName string `json:"ingredient_name"`
+	CategorySlug   string `json:"category_slug"`
+}
+
+func (a *App) HandleListIngredientCategories(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	rows, err := a.DB.Query(r.Context(), `
+		SELECT ingredient_name, category_slug
+		FROM ingredient_categories
+		WHERE user_id = $1
+		ORDER BY ingredient_name
+	`, userID)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("list ingredient categories: %v", err)})
+		return
+	}
+	defer rows.Close()
+	items := []IngredientCategory{}
+	for rows.Next() {
+		var it IngredientCategory
+		if err := rows.Scan(&it.IngredientName, &it.CategorySlug); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "scan"})
+			return
+		}
+		items = append(items, it)
+	}
+	writeJSON(w, 200, items)
+}
+
+func (a *App) HandleReplaceIngredientCategories(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	var body struct {
+		Items []IngredientCategory `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+	ctx := r.Context()
+	tx, err := a.DB.Begin(ctx)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "tx begin"})
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `DELETE FROM ingredient_categories WHERE user_id = $1`, userID); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "delete"})
+		return
+	}
+	for _, it := range body.Items {
+		name := strings.TrimSpace(strings.ToLower(it.IngredientName))
+		if name == "" || strings.TrimSpace(it.CategorySlug) == "" {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO ingredient_categories (user_id, ingredient_name, category_slug)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (user_id, ingredient_name) DO UPDATE SET category_slug = EXCLUDED.category_slug
+		`, userID, name, strings.TrimSpace(it.CategorySlug)); err != nil {
+			writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("insert: %v", err)})
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "commit"})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func (a *App) HandleSetIngredientCategoryBody(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	var body struct {
+		IngredientName string `json:"ingredient_name"`
+		CategorySlug   string `json:"category_slug"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+	name := strings.TrimSpace(strings.ToLower(body.IngredientName))
+	if name == "" || strings.TrimSpace(body.CategorySlug) == "" {
+		writeJSON(w, 400, map[string]any{"error": "ingredient_name and category_slug are required"})
+		return
+	}
+	_, err := a.DB.Exec(r.Context(), `
+		INSERT INTO ingredient_categories (user_id, ingredient_name, category_slug)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, ingredient_name) DO UPDATE SET category_slug = EXCLUDED.category_slug
+	`, userID, name, strings.TrimSpace(body.CategorySlug))
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("upsert: %v", err)})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func (a *App) HandleSetIngredientCategory(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	rawName, _ := url.PathUnescape(chi.URLParam(r, "name"))
+	name := strings.TrimSpace(strings.ToLower(rawName))
+	if name == "" {
+		writeJSON(w, 400, map[string]any{"error": "name is required"})
+		return
+	}
+	var body struct {
+		CategorySlug string `json:"category_slug"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.CategorySlug) == "" {
+		writeJSON(w, 400, map[string]any{"error": "category_slug is required"})
+		return
+	}
+	_, err := a.DB.Exec(r.Context(), `
+		INSERT INTO ingredient_categories (user_id, ingredient_name, category_slug)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, ingredient_name) DO UPDATE SET category_slug = EXCLUDED.category_slug
+	`, userID, name, strings.TrimSpace(body.CategorySlug))
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("upsert: %v", err)})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func (a *App) HandleDeleteIngredientCategory(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	rawName, _ := url.PathUnescape(chi.URLParam(r, "name"))
+	name := strings.TrimSpace(strings.ToLower(rawName))
+	if name == "" {
+		writeJSON(w, 400, map[string]any{"error": "name is required"})
+		return
+	}
+	_, err := a.DB.Exec(r.Context(), `
+		DELETE FROM ingredient_categories WHERE user_id = $1 AND ingredient_name = $2
+	`, userID, name)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("delete: %v", err)})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// ── Nudges ───────────────────────────────────────────────────────────────────
+
+type Nudge struct {
+	ID         string `json:"id"`
+	UserID     string `json:"user_id"`
+	FoodItemID string `json:"food_item_id"`
+	FoodName   string `json:"food_name"`
+	RemindAt   string `json:"remind_at"`
+	WebhookURL string `json:"webhook_url"`
+	Enabled    bool   `json:"enabled"`
+	LoggedToday bool  `json:"logged_today"`
+}
+
+func (a *App) HandleListNudges(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	now := a.now()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, a.Loc)
+	dayEnd := dayStart.Add(24 * time.Hour)
+
+	rows, err := a.DB.Query(r.Context(), `
+		SELECT n.id, n.user_id, n.food_item_id, fi.name,
+		       to_char(n.remind_at, 'HH24:MI'), n.webhook_url, n.enabled,
+		       (SELECT COUNT(*) FROM log_entries le
+		        WHERE le.user_id = n.user_id AND le.ref_id = n.food_item_id
+		          AND le.kind = 'food' AND le.occurred_at >= $2 AND le.occurred_at < $3) AS logged
+		FROM nudges n
+		JOIN food_items fi ON fi.id = n.food_item_id
+		WHERE n.user_id = $1
+		ORDER BY n.remind_at
+	`, userID, dayStart, dayEnd)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("query: %v", err)})
+		return
+	}
+	defer rows.Close()
+
+	nudges := []Nudge{}
+	for rows.Next() {
+		var n Nudge
+		var logCount int
+		if err := rows.Scan(&n.ID, &n.UserID, &n.FoodItemID, &n.FoodName,
+			&n.RemindAt, &n.WebhookURL, &n.Enabled, &logCount); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "scan"})
+			return
+		}
+		n.LoggedToday = logCount > 0
+		nudges = append(nudges, n)
+	}
+	writeJSON(w, 200, nudges)
+}
+
+func (a *App) HandleCreateNudge(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID     string `json:"user_id"`
+		FoodItemID string `json:"food_item_id"`
+		RemindAt   string `json:"remind_at"`
+		WebhookURL string `json:"webhook_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+	if req.UserID == "" {
+		req.UserID = DefaultUserID
+	}
+	if req.FoodItemID == "" || req.RemindAt == "" || req.WebhookURL == "" {
+		writeJSON(w, 400, map[string]any{"error": "food_item_id, remind_at, and webhook_url are required"})
+		return
+	}
+
+	var id string
+	err := a.DB.QueryRow(r.Context(), `
+		INSERT INTO nudges (user_id, food_item_id, remind_at, webhook_url)
+		VALUES ($1, $2, $3::time, $4)
+		ON CONFLICT (user_id, food_item_id) DO UPDATE
+		  SET remind_at = EXCLUDED.remind_at, webhook_url = EXCLUDED.webhook_url, enabled = true
+		RETURNING id
+	`, req.UserID, req.FoodItemID, req.RemindAt, req.WebhookURL).Scan(&id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("insert: %v", err)})
+		return
+	}
+	writeJSON(w, 201, map[string]any{"ok": true, "id": id})
+}
+
+func (a *App) HandleUpdateNudge(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		RemindAt   *string `json:"remind_at"`
+		WebhookURL *string `json:"webhook_url"`
+		Enabled    *bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if req.RemindAt != nil {
+		a.DB.Exec(r.Context(), `UPDATE nudges SET remind_at = $2::time WHERE id = $1`, id, *req.RemindAt)
+	}
+	if req.WebhookURL != nil {
+		a.DB.Exec(r.Context(), `UPDATE nudges SET webhook_url = $2 WHERE id = $1`, id, *req.WebhookURL)
+	}
+	if req.Enabled != nil {
+		a.DB.Exec(r.Context(), `UPDATE nudges SET enabled = $2 WHERE id = $1`, id, *req.Enabled)
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func (a *App) HandleDeleteNudge(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ct, err := a.DB.Exec(r.Context(), `DELETE FROM nudges WHERE id = $1`, id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("delete: %v", err)})
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		writeJSON(w, 404, map[string]any{"error": "not found"})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func (a *App) HandleTestNudge(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var foodName, webhookURL string
+	err := a.DB.QueryRow(r.Context(), `
+		SELECT fi.name, n.webhook_url
+		FROM nudges n JOIN food_items fi ON fi.id = n.food_item_id
+		WHERE n.id = $1
+	`, id).Scan(&foodName, &webhookURL)
+	if err != nil {
+		writeJSON(w, 404, map[string]any{"error": "nudge not found"})
+		return
+	}
+	if err := fireDiscordWebhook(webhookURL, foodName); err != nil {
+		writeJSON(w, 502, map[string]any{"error": fmt.Sprintf("webhook failed: %v", err)})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "message": "webhook fired"})
+}
+
+func fireDiscordWebhook(webhookURL, foodName string) error {
+	body, _ := json.Marshal(map[string]string{
+		"content": fmt.Sprintf("🔔 **Nudge:** You haven't logged **%s** yet today!", foodName),
+	})
+	resp, err := http.Post(webhookURL, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("discord returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (a *App) checkNudges() {
+	now := a.now()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, a.Loc)
+	dayEnd := dayStart.Add(24 * time.Hour)
+	currentTime := now.Format("15:04")
+	prevMinute := now.Add(-1 * time.Minute).Format("15:04")
+
+	rows, err := a.DB.Query(context.Background(), `
+		SELECT n.id, n.user_id, n.food_item_id, fi.name, n.webhook_url
+		FROM nudges n
+		JOIN food_items fi ON fi.id = n.food_item_id
+		WHERE n.enabled = true
+		  AND to_char(n.remind_at, 'HH24:MI') > $1
+		  AND to_char(n.remind_at, 'HH24:MI') <= $2
+	`, prevMinute, currentTime)
+	if err != nil {
+		log.Printf("[nudge] query error: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	type pending struct {
+		id, userID, foodItemID, foodName, webhookURL string
+	}
+	var checks []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.userID, &p.foodItemID, &p.foodName, &p.webhookURL); err != nil {
+			log.Printf("[nudge] scan error: %v", err)
+			continue
+		}
+		checks = append(checks, p)
+	}
+
+	for _, p := range checks {
+		var count int
+		err := a.DB.QueryRow(context.Background(), `
+			SELECT COUNT(*) FROM log_entries
+			WHERE user_id = $1 AND ref_id = $2 AND kind = 'food'
+			  AND occurred_at >= $3 AND occurred_at < $4
+		`, p.userID, p.foodItemID, dayStart, dayEnd).Scan(&count)
+		if err != nil {
+			log.Printf("[nudge] log check error for %s: %v", p.foodName, err)
+			continue
+		}
+		if count == 0 {
+			log.Printf("[nudge] firing webhook for %s (not logged today)", p.foodName)
+			if err := fireDiscordWebhook(p.webhookURL, p.foodName); err != nil {
+				log.Printf("[nudge] webhook error for %s: %v", p.foodName, err)
+			}
+		} else {
+			log.Printf("[nudge] %s already logged today (%d entries), skipping", p.foodName, count)
+		}
+	}
 }

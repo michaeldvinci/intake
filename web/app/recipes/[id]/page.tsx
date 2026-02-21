@@ -1,44 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-
-// ---------------------------------------------------------------------------
-// Food group taxonomy
-// ---------------------------------------------------------------------------
-const FOOD_GROUPS: { slug: string; label: string }[] = [
-  { slug: "produce",            label: "Produce" },
-  { slug: "meat-seafood",       label: "Meat & Seafood" },
-  { slug: "dairy-refrigerated", label: "Dairy & Refrigerated" },
-  { slug: "pantry-dry-goods",   label: "Pantry/Dry Goods" },
-  { slug: "spices-oils",        label: "Spices & Oils" },
-  { slug: "frozen",             label: "Frozen" },
-];
-
-function slugToLabel(slug: string): string {
-  return FOOD_GROUPS.find(g => g.slug === slug)?.label ?? slug;
-}
-
-const GROUP_ORDER = Object.fromEntries(FOOD_GROUPS.map((g, i) => [g.slug, i]));
-
-// Categories are stored in localStorage as { [normalised ingredient name]: slug }
-const CAT_KEY = "ingredient_categories";
-
-function loadCategories(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem(CAT_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveCategories(map: Record<string, string>) {
-  localStorage.setItem(CAT_KEY, JSON.stringify(map));
-}
-
-function normName(name: string) {
-  return name.trim().toLowerCase();
-}
+import {
+  FOOD_GROUPS,
+  GROUP_ORDER,
+  slugToLabel,
+  normName,
+  fetchCategories,
+  saveCategory,
+} from "../../lib/categories";
 
 // ---------------------------------------------------------------------------
 // Markdown renderer
@@ -128,19 +99,21 @@ export default function RecipeDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [photo, setPhoto] = useState<string>("");
   const [previewMd, setPreviewMd] = useState(false);
+  const catsRef = useRef<Record<string, string>>({});
 
   async function loadAll() {
     if (!recipeID) return;
-    const [recipeRes, linkedFoodRes, shoppingRes] = await Promise.all([
+    const [recipeRes, linkedFoodRes, shoppingRes, cats] = await Promise.all([
       fetch(`${API}/recipes/${recipeID}?user_id=${USER_ID}`, { cache: "no-store" }),
       fetch(`${API}/food-items/${recipeID}`, { cache: "no-store" }),
       fetch(`${API}/recipes/${recipeID}/shopping-items`, { cache: "no-store" }),
+      fetchCategories(),
     ]);
+    catsRef.current = cats;
     if (recipeRes.ok) setRecipe(await recipeRes.json());
     if (linkedFoodRes.ok) setFood(await linkedFoodRes.json());
     if (shoppingRes.ok) {
       const items: ShoppingItem[] = await shoppingRes.json();
-      const cats = loadCategories();
       setShoppingDraft(
         items.map(it => ({
           ...it,
@@ -173,14 +146,12 @@ export default function RecipeDetailPage() {
     setIsSaving(true);
     setStatus("");
 
-    // Persist categories for every named ingredient
-    const cats = loadCategories();
-    for (const it of shoppingDraft) {
-      if (it.name.trim() && it.category) {
-        cats[normName(it.name)] = it.category;
-      }
-    }
-    saveCategories(cats);
+    // Persist categories for every named ingredient via API
+    await Promise.all(
+      shoppingDraft
+        .filter(it => it.name.trim() && it.category)
+        .map(it => saveCategory(it.name, it.category))
+    );
 
     const shoppingPayload = shoppingDraft
       .filter(it => it.name.trim())
@@ -268,8 +239,7 @@ export default function RecipeDetailPage() {
       const updated = { ...it, ...patch };
       // When the name changes, look up any stored category for it
       if (patch.name !== undefined && patch.category === undefined) {
-        const cats = loadCategories();
-        const stored = cats[normName(patch.name)];
+        const stored = catsRef.current[normName(patch.name)];
         if (stored) updated.category = stored;
       }
       return updated;
