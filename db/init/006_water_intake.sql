@@ -1,2 +1,0 @@
-ALTER TABLE daily_activity
-  ADD COLUMN IF NOT EXISTS water_glasses INT NOT NULL DEFAULT 0;

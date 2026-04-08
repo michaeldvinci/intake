@@ -1,1 +1,0 @@
--- superseded by 001_init.sql per-serving redesign; kept as no-op placeholder

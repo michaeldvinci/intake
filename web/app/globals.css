@@ -68,6 +68,12 @@ input:focus, select:focus, textarea:focus {
   position: sticky;
   top: 0;
   height: 100vh;
+  transition: width 0.3s ease, padding 0.3s ease;
+}
+
+.sidebar-collapsed {
+  width: 72px;
+  padding: 24px 12px;
 }
 
 .sidebar-logo {
