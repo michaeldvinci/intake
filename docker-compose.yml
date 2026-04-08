@@ -20,8 +20,7 @@ services:
       retries: 20
 
   api:
-    build:
-      context: ./api
+    image: michaeldvinci/intake-api:latest
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     environment:
@@ -36,11 +35,7 @@ services:
         condition: service_healthy
 
   web:
-    build:
-      context: ./web
-      args:
-        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8080}
-        NEXT_PUBLIC_APP_TIMEZONE: ${NEXT_PUBLIC_APP_TIMEZONE:-America/Chicago}
+    image: michaeldvinci/intake-web:latest
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     environment:
