@@ -263,7 +263,7 @@ export default function ShoppingPage() {
                     {group.label}
                   </div>
 
-                  <div style={{ display: "grid", gap: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                     {group.items.map(it => {
                       const key = `${normName(it.name)}||${it.unit.toLowerCase()}`;
                       const isChecked = checked.has(key);
@@ -271,11 +271,10 @@ export default function ShoppingPage() {
                         <div
                           key={key}
                           style={{
-                            display: "grid",
-                            gridTemplateColumns: "auto 1fr auto",
-                            gap: 10,
-                            alignItems: "center",
-                            padding: "7px 10px",
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: 8,
+                            padding: "10px",
                             border: "1px solid var(--border)",
                             borderRadius: "var(--radius-sm)",
                             opacity: isChecked ? 0.45 : 1,
@@ -288,24 +287,24 @@ export default function ShoppingPage() {
                             checked={isChecked}
                             onChange={() => toggleChecked(key)}
                             onClick={e => e.stopPropagation()}
-                            style={{ width: 16, height: 16 }}
+                            style={{ width: 16, height: 16, marginTop: 2, flexShrink: 0 }}
                           />
-                          <div>
-                            <span style={{
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{
                               fontWeight: 600,
                               fontSize: 14,
                               textDecoration: isChecked ? "line-through" : "none",
                             }}>
                               {it.name}
-                            </span>
+                            </div>
+                            <div style={{ fontSize: 13, color: "var(--accent)", fontWeight: 700, marginTop: 2 }}>
+                              {fmtAmt(it.amount)}{it.unit ? " " + it.unit : ""}
+                            </div>
                             {it.recipes.length > 1 && (
-                              <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>
+                              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
                                 {it.recipes.join(", ")}
-                              </span>
+                              </div>
                             )}
-                          </div>
-                          <div style={{ fontSize: 13, color: "var(--accent)", whiteSpace: "nowrap", fontWeight: 700 }}>
-                            {fmtAmt(it.amount)}{it.unit ? " " + it.unit : ""}
                           </div>
                         </div>
                       );

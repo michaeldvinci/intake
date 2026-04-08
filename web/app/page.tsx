@@ -295,7 +295,6 @@ function LedgerInner() {
             fat_g={data.fat_g}
             fiber_g={data.fiber_g}
           />
-
           <WaterTracker date={date} />
 
           {/* Food log */}

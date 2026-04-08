@@ -25,6 +25,7 @@ type PantryItem = {
   carbs_g_per_serving: number;
   fat_g_per_serving: number;
   quantity: number;
+  expires_at?: string;
 };
 
 type PantryItemWithCategory = PantryItem & { category: string };
@@ -190,6 +191,27 @@ export default function PantryPage() {
     saveCategoryAPI(item.food_name, slug);
     catsRef.current[normName(item.food_name)] = slug;
     setItems(attachCategories(rawItems, catsRef.current));
+  }
+
+  async function updateExpiration(foodItemId: string, expiresAt: string | null, currentQty: number) {
+    await fetch(`${API}/pantry/${foodItemId}?user_id=${USER_ID}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity: currentQty, expires_at: expiresAt || null }),
+    });
+    await loadPantry();
+  }
+
+  function expirationStatus(expiresAt?: string): { label: string; color: string } | null {
+    if (!expiresAt) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const exp = new Date(expiresAt + "T00:00:00");
+    const diffDays = Math.floor((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { label: "Expired", color: "var(--err, #ef4444)" };
+    if (diffDays === 0) return { label: "Expires today", color: "var(--err, #ef4444)" };
+    if (diffDays <= 3) return { label: `Expires in ${diffDays}d`, color: "var(--warn, #f59e0b)" };
+    return { label: `Exp ${expiresAt}`, color: "var(--muted)" };
   }
 
   function commitEdit(item: PantryItemWithCategory) {
@@ -389,6 +411,33 @@ export default function PantryPage() {
                                 <option key={g.slug} value={g.slug}>{g.label}</option>
                               ))}
                             </select>
+                            {(() => {
+                              const status = expirationStatus(item.expires_at);
+                              return (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                  {status && (
+                                    <span style={{ fontSize: 11, fontWeight: 600, color: status.color }}>
+                                      {status.label}
+                                    </span>
+                                  )}
+                                  <input
+                                    type="date"
+                                    value={item.expires_at || ""}
+                                    onChange={e => updateExpiration(item.food_item_id, e.target.value || null, item.quantity)}
+                                    title={item.expires_at ? `Expires: ${item.expires_at}` : "Set expiration date"}
+                                    style={{
+                                      fontSize: 11, padding: "1px 4px",
+                                      color: status?.color || "var(--muted)",
+                                      background: "transparent",
+                                      border: "1px solid var(--border)",
+                                      borderRadius: 4,
+                                      width: item.expires_at ? "auto" : 28,
+                                      cursor: "pointer",
+                                    }}
+                                  />
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
 

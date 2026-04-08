@@ -41,6 +41,12 @@ export default function NudgePage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Edit modal state
+  const [editingNudge, setEditingNudge] = useState<Nudge | null>(null);
+  const [editRemindAt, setEditRemindAt] = useState("");
+  const [editWebhookUrl, setEditWebhookUrl] = useState("");
+  const [updating, setUpdating] = useState(false);
+
   // Load nudges
   async function loadNudges() {
     try {
@@ -126,6 +132,44 @@ export default function NudgePage() {
     } else {
       const data = await res.json();
       alert(`Webhook failed: ${data.error || "unknown error"}`);
+    }
+  }
+
+  function openEditModal(nudge: Nudge) {
+    setEditingNudge(nudge);
+    setEditRemindAt(nudge.remind_at);
+    setEditWebhookUrl(nudge.webhook_url);
+  }
+
+  function closeEditModal() {
+    setEditingNudge(null);
+    setEditRemindAt("");
+    setEditWebhookUrl("");
+  }
+
+  async function saveEdit() {
+    if (!editingNudge || !editRemindAt || !editWebhookUrl.trim()) return;
+    setUpdating(true);
+    try {
+      const res = await fetch(`${API}/nudges/${editingNudge.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remind_at: editRemindAt,
+          webhook_url: editWebhookUrl.trim(),
+        }),
+      });
+      if (res.ok) {
+        localStorage.setItem(WEBHOOK_KEY, editWebhookUrl.trim());
+        setNudges(prev => prev.map(n =>
+          n.id === editingNudge.id
+            ? { ...n, remind_at: editRemindAt, webhook_url: editWebhookUrl.trim() }
+            : n
+        ));
+        closeEditModal();
+      }
+    } finally {
+      setUpdating(false);
     }
   }
 
@@ -307,6 +351,14 @@ export default function NudgePage() {
                   <button
                     className="btn btn-ghost"
                     style={{ fontSize: 11, padding: "4px 8px" }}
+                    onClick={() => openEditModal(n)}
+                    title="Edit reminder time and webhook"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 11, padding: "4px 8px" }}
                     onClick={() => testNudge(n.id)}
                     title="Send test notification"
                   >
@@ -332,6 +384,95 @@ export default function NudgePage() {
           </div>
         )}
       </div>
+
+      {/* Edit modal */}
+      {editingNudge && (
+        <div
+          className="modal-backdrop"
+          onClick={e => {
+            if (e.target === e.currentTarget) closeEditModal();
+          }}
+        >
+          <div className="modal">
+            <div className="modal-title">Edit Reminder</div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              {/* Food name (read-only) */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", display: "block", marginBottom: 4 }}>
+                  Food Item
+                </label>
+                <div style={{
+                  padding: "8px 10px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}>
+                  {editingNudge.food_name}
+                </div>
+              </div>
+
+              {/* Time picker */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", display: "block", marginBottom: 4 }}>
+                  Remind At
+                </label>
+                <input
+                  type="time"
+                  value={editRemindAt}
+                  onChange={e => setEditRemindAt(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    fontSize: 14,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--surface)",
+                    color: "var(--fg)",
+                  }}
+                />
+              </div>
+
+              {/* Webhook URL */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", display: "block", marginBottom: 4 }}>
+                  Discord Webhook URL
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={editWebhookUrl}
+                  onChange={e => setEditWebhookUrl(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    fontSize: 14,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--surface)",
+                    color: "var(--fg)",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={closeEditModal}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={saveEdit}
+                disabled={!editRemindAt || !editWebhookUrl.trim() || updating}
+              >
+                {updating ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
