@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,9 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+//go:embed schema.sql
+var schemaSQL string
 
 type App struct {
 	DB  *pgxpool.Pool
@@ -53,6 +57,11 @@ func main() {
 		log.Fatalf("db connect: %v", err)
 	}
 	defer db.Close()
+
+	if _, err := db.Exec(ctx, schemaSQL); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+	log.Println("schema applied")
 
 	app := &App{DB: db, Loc: loc}
 	if err := app.EnsureRecipePages(context.Background()); err != nil {
