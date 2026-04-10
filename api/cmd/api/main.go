@@ -1036,6 +1036,12 @@ type CreateRecipeRequest struct {
 	FiberPerServing    float64 `json:"fiber_g_per_serving"`
 	Instructions       string  `json:"instructions"`
 	YieldCount         int     `json:"yield_count"`
+	ShoppingItems      []struct {
+		Name      string  `json:"name"`
+		Amount    float64 `json:"amount"`
+		Unit      string  `json:"unit"`
+		SortOrder int     `json:"sort_order"`
+	} `json:"shopping_items"`
 }
 
 func (a *App) HandleListRecipes(w http.ResponseWriter, r *http.Request) {
@@ -1119,6 +1125,22 @@ func (a *App) HandleCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("create recipe: %v", err)})
 		return
+	}
+	for i, it := range req.ShoppingItems {
+		if strings.TrimSpace(it.Name) == "" {
+			continue
+		}
+		order := it.SortOrder
+		if order == 0 {
+			order = i
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO recipe_shopping_items (recipe_id, name, amount, unit, sort_order)
+			VALUES ($1, $2, $3, $4, $5)
+		`, id, strings.TrimSpace(it.Name), it.Amount, it.Unit, order); err != nil {
+			writeJSON(w, 500, map[string]any{"error": fmt.Sprintf("insert shopping item: %v", err)})
+			return
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		writeJSON(w, 500, map[string]any{"error": "tx commit"})
