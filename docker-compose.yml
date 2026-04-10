@@ -19,7 +19,7 @@ services:
       retries: 20
 
   api:
-    image: michaeldvinci/intake-api:0.0.2
+    image: michaeldvinci/intake-api:latest
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     environment:
@@ -34,7 +34,7 @@ services:
         condition: service_healthy
 
   web:
-    image: michaeldvinci/intake-web:0.0.2
+    image: michaeldvinci/intake-web:latest
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     environment:

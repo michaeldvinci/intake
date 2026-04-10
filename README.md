@@ -8,15 +8,38 @@ A self-hosted nutrition and activity tracker. Log meals, track macros, manage re
 
 ## Quick Start
 
-```bash
-# 1. Copy env file and edit as needed
-cp .env.example .env
+**1. Grab the compose file**
 
-# 2. Build and start
-docker compose up --build
+```bash
+curl -O https://raw.githubusercontent.com/michaeldvinci/intake/main/docker-compose.yml
 ```
 
-Open **http://localhost:3001** in your browser.
+**2. Create your `.env`**
+
+```bash
+curl -O https://raw.githubusercontent.com/michaeldvinci/intake/main/.env.example
+cp .env.example .env
+```
+
+Open `.env` and set the values for your environment. At minimum, `DATABASE_URL` must be set — everything else has a working default.
+
+```
+DATABASE_URL=postgres://intake:intakepw@db:5432/intake?sslmode=disable
+```
+
+If you're accessing the app from another device on your network (e.g. a phone), also set:
+
+```
+NEXT_PUBLIC_API_BASE=http://<your-host-ip>:8080
+```
+
+**3. Start**
+
+```bash
+docker compose up -d
+```
+
+Open **http://localhost:3001** in your browser. The database schema is applied automatically by the API on first boot — no extra setup required.
 
 ---
 
@@ -86,12 +109,13 @@ Log body weight (lbs or kg) and daily steps/active calories over time.
 
 | Variable | Default | Description |
 |---|---|---|
+| `DATABASE_URL` | — | **Required.** Postgres connection string |
 | `POSTGRES_DB` | `intake` | Database name |
 | `POSTGRES_USER` | `intake` | Database user |
 | `POSTGRES_PASSWORD` | `intakepw` | Database password |
-| `API_PORT` | `8088` | Host port the API is exposed on |
+| `API_PORT` | `8080` | Host port the API is exposed on |
 | `APP_TIMEZONE` | `America/Chicago` | Timezone for date calculations |
-| `NEXT_PUBLIC_API_BASE` | `http://localhost:8088` | API base URL (build-time; used as fallback) |
+| `NEXT_PUBLIC_API_BASE` | `http://localhost:8080` | API URL used by remote clients (phone, other devices) |
 | `NEXT_PUBLIC_APP_TIMEZONE` | `America/Chicago` | Timezone used by the frontend |
 
 ---
@@ -101,7 +125,7 @@ Log body weight (lbs or kg) and daily steps/active calories over time.
 ```
 intake/
 ├── api/
-│   ├── cmd/api/main.go       # Go REST API
+│   ├── cmd/api/main.go       # Go REST API (runs schema migrations on boot)
 │   ├── go.mod / go.sum
 │   └── Dockerfile
 ├── web/
@@ -119,19 +143,17 @@ intake/
 │   │   └── lib/              # Date utilities
 │   ├── package.json
 │   └── Dockerfile
-├── db/
-│   └── init/                 # SQL migrations (run on first boot)
 ├── docker-compose.yml
 └── .env.example
 ```
 
 | Service | Image | Internal Port | Host Port |
 |---|---|---|---|
-| `db` | postgres:16-alpine | 5432 | — |
-| `api` | Go multi-stage | 8080 | `API_PORT` (8088) |
-| `web` | Node 20-alpine | 3000 | 3001 |
+| `db` | postgres:16-alpine | 5432 | 5432 |
+| `api` | michaeldvinci/intake-api | 8080 | `API_PORT` (8080) |
+| `web` | michaeldvinci/intake-web | 3000 | 3001 |
 
-The web container proxies all `/api/*` requests to the API internally, so the browser never needs to know the API's host or port.
+The web container proxies all `/api/*` requests to the API internally via `API_INTERNAL_BASE`, so the browser never needs to reach the API directly.
 
 ---
 
