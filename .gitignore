@@ -1,4 +1,14 @@
 .env
 .DS_Store
 api/api
+scripts/
 *\.2*
+**/*/.next/
+**/*/node_modules/
+**/*/dist/
+**/*/build/
+**/*/coverage/
+**/*/out/
+**/*/public/
+**/*/static/
+**/*/logs/ 
