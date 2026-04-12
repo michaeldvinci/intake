@@ -9,6 +9,7 @@ import {
   fetchCategories,
   saveCategory as saveCategoryAPI,
 } from "../lib/categories";
+import { diffDaysISO, todayISOInAppTZ } from "../lib/date";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
@@ -204,10 +205,7 @@ export default function PantryPage() {
 
   function expirationStatus(expiresAt?: string): { label: string; color: string } | null {
     if (!expiresAt) return null;
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const exp = new Date(expiresAt + "T00:00:00");
-    const diffDays = Math.floor((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDays = diffDaysISO(todayISOInAppTZ(), expiresAt);
     if (diffDays < 0) return { label: "Expired", color: "var(--err, #ef4444)" };
     if (diffDays === 0) return { label: "Expires today", color: "var(--err, #ef4444)" };
     if (diffDays <= 3) return { label: `Expires in ${diffDays}d`, color: "var(--warn, #f59e0b)" };

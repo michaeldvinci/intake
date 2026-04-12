@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { todayISOInAppTZ } from "../lib/date";
+import { appDateParts, todayISOInAppTZ } from "../lib/date";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
@@ -25,8 +25,9 @@ const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 export default function CalendarPage() {
   const router = useRouter();
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
+  const appToday = appDateParts(now);
+  const [year, setYear] = useState(appToday.year);
+  const [month, setMonth] = useState(appToday.month - 1);
   const [totals, setTotals] = useState<Record<string, number>>({});
 
   useEffect(() => {

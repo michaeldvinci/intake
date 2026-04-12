@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { addDaysISO, todayISOInAppTZ } from "../lib/date";
+import { addDaysISO, formatDateInAppTZ, noonInAppTZ, todayISOInAppTZ } from "../lib/date";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
@@ -14,8 +14,7 @@ function nextDay(dateStr: string) {
   return addDaysISO(dateStr, 1);
 }
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return formatDateInAppTZ(dateStr);
 }
 
 type FoodItem = {
@@ -228,7 +227,7 @@ function LogPageInner() {
           food_item_id: selectedFood,
           servings: Number(servings),
           meal: modal.meal,
-          occurred_at: isToday ? new Date().toISOString() : date + "T12:00:00.000Z",
+          occurred_at: isToday ? new Date().toISOString() : noonInAppTZ(date).toISOString(),
         }),
       });
       if (result.res.ok) {
