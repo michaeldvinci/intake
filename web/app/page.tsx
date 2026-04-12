@@ -8,7 +8,7 @@ import { MacroSummaryCard } from "./components/MacroSummaryCard";
 import { MealGroup } from "./components/MealGroup";
 import { LogFoodModal } from "./components/LogFoodModal";
 import { useNutritionGoals } from "./context/NutritionGoals";
-import { addDaysISO, todayISOInAppTZ } from "./lib/date";
+import { addDaysISO, formatDateInAppTZ, noonInAppTZ, todayISOInAppTZ } from "./lib/date";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
@@ -51,8 +51,7 @@ function prevDay(d: string) { return addDaysISO(d, -1); }
 function nextDay(d: string) { return addDaysISO(d, 1); }
 
 function formatHeaderDate(dateStr: string) {
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return formatDateInAppTZ(dateStr);
 }
 
 function mealLabel(meal: string) {
@@ -176,7 +175,7 @@ function LedgerInner() {
           food_item_id: selectedFood,
           servings: Number(servings),
           meal: modalMeal,
-          occurred_at: isToday ? new Date().toISOString() : date + "T12:00:00.000Z",
+          occurred_at: isToday ? new Date().toISOString() : noonInAppTZ(date).toISOString(),
         }),
       });
       if (res.ok) {
