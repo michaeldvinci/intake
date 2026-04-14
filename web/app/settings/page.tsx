@@ -65,6 +65,7 @@ export default function SettingsPage() {
   const [aiStatus, setAiStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [lastReview, setLastReview] = useState<AIReviewResult | null>(null);
   const [aiKeySaved, setAiKeySaved] = useState(false);
+  const [aiCustomPrompt, setAiCustomPrompt] = useState("");
 
   useEffect(() => {
     const raw = Number(localStorage.getItem(WATER_GOAL_KEY));
@@ -131,7 +132,7 @@ export default function SettingsPage() {
     setAiRunning(true);
     setAiStatus(null);
     try {
-      const result = await triggerAIReview();
+      const result = await triggerAIReview(aiCustomPrompt.trim() || undefined);
       setLastReview(result);
       setAiStatus({ ok: true, msg: "Review complete. Result saved and posted to Discord." });
     } catch (err) {
@@ -407,6 +408,20 @@ export default function SettingsPage() {
             />
             <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
               Review runs automatically at this time each day and posts to Discord.
+            </p>
+          </div>
+
+          <div>
+            <label className="field-label">Custom prompt (optional)</label>
+            <textarea
+              placeholder={"Leave blank to use the default macro-goals review.\n\nOr write your own, e.g. \"Was today a relatively good day? Anything to change?\""}
+              value={aiCustomPrompt}
+              onChange={e => setAiCustomPrompt(e.target.value)}
+              rows={4}
+              style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }}
+            />
+            <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+              Replaces the default task instructions. Your food log and macro data are always included.
             </p>
           </div>
 

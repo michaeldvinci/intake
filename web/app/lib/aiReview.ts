@@ -6,8 +6,12 @@ import { AI_LAST_REVIEW_KEY, AIReviewResult } from "./settings";
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
-export async function triggerAIReview(): Promise<AIReviewResult> {
-  const res = await fetch(`${API}/ai-review/run?user_id=${USER_ID}`, { method: "POST" });
+export async function triggerAIReview(customPrompt?: string): Promise<AIReviewResult> {
+  const res = await fetch(`${API}/ai-review/run?user_id=${USER_ID}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ custom_prompt: customPrompt ?? "" }),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.error ?? `AI review failed (${res.status})`);
