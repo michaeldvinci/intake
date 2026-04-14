@@ -170,6 +170,50 @@ CREATE TABLE IF NOT EXISTS user_settings (
   PRIMARY KEY (user_id, key)
 );
 
+-- ---------------------------------------------------- workout_programs ---
+CREATE TABLE IF NOT EXISTS workout_programs (
+  id         UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT        NOT NULL,
+  days       TEXT        NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ----------------------------------------- workout_program_exercises ---
+CREATE TABLE IF NOT EXISTS workout_program_exercises (
+  id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  program_id  UUID        NOT NULL REFERENCES workout_programs(id) ON DELETE CASCADE,
+  name        TEXT        NOT NULL,
+  sets        INT         NOT NULL DEFAULT 3,
+  reps_min    INT         NOT NULL DEFAULT 8,
+  reps_max    INT         NOT NULL DEFAULT 10,
+  sort_order  INT         NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------- workout_sessions ---
+CREATE TABLE IF NOT EXISTS workout_sessions (
+  id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  program_id  UUID        NOT NULL REFERENCES workout_programs(id) ON DELETE CASCADE,
+  date        DATE        NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, program_id, date)
+);
+
+-- ----------------------------------------------- workout_session_sets ---
+CREATE TABLE IF NOT EXISTS workout_session_sets (
+  id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id  UUID        NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
+  exercise_id UUID        NOT NULL REFERENCES workout_program_exercises(id) ON DELETE CASCADE,
+  set_number  INT         NOT NULL DEFAULT 1,
+  weight_kg   NUMERIC,
+  reps_actual INT,
+  completed   BOOLEAN     NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(session_id, exercise_id, set_number)
+);
+
 -- --------------------------------------------------------- default user ---
 INSERT INTO users (id, email, display_name)
 VALUES ('00000000-0000-0000-0000-000000000001', 'local@intake', 'Local User')

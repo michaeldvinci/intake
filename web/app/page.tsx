@@ -9,6 +9,7 @@ import { MealGroup } from "./components/MealGroup";
 import { LogFoodModal } from "./components/LogFoodModal";
 import { useNutritionGoals } from "./context/NutritionGoals";
 import { addDaysISO, formatDateInAppTZ, noonInAppTZ, todayISOInAppTZ } from "./lib/date";
+import { useWeightUnit, toKg, fromKg } from "./context/WeightUnit";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
@@ -33,6 +34,29 @@ type LogEntry = {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+};
+
+type SessionSet = {
+  set_number: number;
+  weight_kg: number | null;
+  reps_actual: number | null;
+  completed: boolean;
+};
+
+type SessionExercise = {
+  id: string;
+  name: string;
+  sets: number;
+  reps_min: number;
+  reps_max: number;
+  logged_sets: SessionSet[];
+};
+
+type WorkoutSessionDay = {
+  session_id: string | null;
+  program_id: string;
+  program_name: string;
+  exercises: SessionExercise[];
 };
 
 type FoodItem = {
@@ -98,6 +122,7 @@ function LedgerInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { goals } = useNutritionGoals();
+  const { unit } = useWeightUnit();
   const today = todayISOInAppTZ();
   const date = searchParams.get("date") || today;
   const isToday = date === today;
@@ -106,6 +131,30 @@ function LedgerInner() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [workoutSessions, setWorkoutSessions] = useState<WorkoutSessionDay[]>([]);
+
+  // Steps modal state
+  const [stepsModalOpen, setStepsModalOpen] = useState(false);
+  const [stepsInput, setStepsInput] = useState("");
+  const [savingSteps, setSavingSteps] = useState(false);
+
+  async function submitSteps() {
+    const steps = Math.max(0, Math.round(Number(stepsInput)));
+    if (isNaN(steps)) return;
+    setSavingSteps(true);
+    try {
+      const base = API.replace(/\/+$/, "");
+      const activeKcal = Math.round(steps * 0.04);
+      await fetch(`${base}/activity/daily`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: USER_ID, date, steps, active_calories_est: activeKcal }),
+      });
+      await fetchAll();
+      setStepsModalOpen(false);
+    } catch { /* ignore */ }
+    setSavingSteps(false);
+  }
 
   // Add-to-meal modal state
   const [modalMeal, setModalMeal] = useState<string | null>(null);
@@ -124,15 +173,17 @@ function LedgerInner() {
   const fetchAll = useCallback(async () => {
     try {
       const base = API.replace(/\/+$/, "");
-      const [dashRes, logRes, fiRes] = await Promise.all([
+      const [dashRes, logRes, fiRes, wsRes] = await Promise.all([
         fetch(`${base}/dashboard/today?user_id=${USER_ID}&date=${date}`),
         fetch(`${base}/log/today?user_id=${USER_ID}&date=${date}`),
         fetch(`${base}/food-items`),
+        fetch(`${base}/workout-sessions/day?user_id=${USER_ID}&date=${date}`),
       ]);
       if (!dashRes.ok) throw new Error("dashboard fetch failed");
       setData(await dashRes.json());
       setEntries(logRes.ok ? await logRes.json() : []);
       setFoodItems(fiRes.ok ? await fiRes.json() : []);
+      setWorkoutSessions(wsRes.ok ? await wsRes.json() : []);
       setApiError(null);
     } catch {
       setApiError("Could not reach API. Check that the backend is running.");
@@ -221,6 +272,59 @@ function LedgerInner() {
     setCreatingItem(false);
   }
 
+  async function startWorkoutSession(programId: string) {
+    const res = await fetch(`${API}/workout-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ program_id: programId, date }),
+    });
+    if (res.ok) {
+      await fetchAll();
+    }
+  }
+
+  async function upsertSet(
+    sessionId: string,
+    exerciseId: string,
+    setNumber: number,
+    weightKg: number | null,
+    repsActual: number | null,
+    completed: boolean,
+  ) {
+    await fetch(`${API}/workout-session-sets`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        exercise_id: exerciseId,
+        set_number: setNumber,
+        weight_kg: weightKg,
+        reps_actual: repsActual,
+        completed,
+      }),
+    });
+    // Optimistic update
+    setWorkoutSessions(prev =>
+      prev.map(s => {
+        if (s.session_id !== sessionId) return s;
+        return {
+          ...s,
+          exercises: s.exercises.map(ex => {
+            if (ex.id !== exerciseId) return ex;
+            return {
+              ...ex,
+              logged_sets: ex.logged_sets.map(ls =>
+                ls.set_number === setNumber
+                  ? { ...ls, weight_kg: weightKg, reps_actual: repsActual, completed }
+                  : ls
+              ),
+            };
+          }),
+        };
+      })
+    );
+  }
+
   const net = data ? data.calories_in - data.active_calories_est : 0;
   const remaining = data ? goals.calories - data.calories_in : 0;
 
@@ -284,7 +388,8 @@ function LedgerInner() {
               value={data.steps.toLocaleString()}
               unit=""
               accent="var(--muted)"
-              sub="Today"
+              sub="Tap to update"
+              onClick={() => { setStepsInput(String(data.steps || "")); setStepsModalOpen(true); }}
             />
           </div>
 
@@ -295,6 +400,26 @@ function LedgerInner() {
             fiber_g={data.fiber_g}
           />
           <WaterTracker date={date} />
+
+          {/* Workout card */}
+          {workoutSessions.length > 0 && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="card-label" style={{ marginBottom: 12 }}>Workout</div>
+              <div style={{ display: "grid", gap: 4 }}>
+                {workoutSessions.map(session => (
+                  <WorkoutSessionPanel
+                    key={session.program_id}
+                    session={session}
+                    unit={unit}
+                    onStart={() => startWorkoutSession(session.program_id)}
+                    onUpsertSet={(exId, setNum, wkg, reps, done) =>
+                      upsertSet(session.session_id!, exId, setNum, wkg, reps, done)
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Food log */}
           <div className="card" style={{ marginTop: 16 }}>
@@ -354,6 +479,44 @@ function LedgerInner() {
         />
       )}
 
+      {/* Steps modal */}
+      {stepsModalOpen && (
+        <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setStepsModalOpen(false); }}>
+          <div className="modal">
+            <div className="modal-title">Update Steps</div>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div>
+                <label className="field-label">Steps</label>
+                <input
+                  autoFocus
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 8000"
+                  value={stepsInput}
+                  onChange={e => setStepsInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") submitSteps(); }}
+                />
+              </div>
+              {stepsInput && Number(stepsInput) >= 0 && (
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                  Active burn estimate: {Math.round(Number(stepsInput) * 0.04)} kcal
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={() => setStepsModalOpen(false)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={submitSteps}
+                disabled={savingSteps || !stepsInput}
+              >
+                {savingSteps ? "…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* New item modal */}
       {showNewItem && (
         <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setShowNewItem(false); }}>
@@ -392,13 +555,170 @@ function LedgerInner() {
   );
 }
 
-function StatCard({
-  label, value, unit, accent, sub, pct,
+function SetRow({
+  set,
+  unit,
+  onUpdate,
 }: {
-  label: string; value: number | string; unit: string; accent: string; sub?: string; pct?: number;
+  set: SessionSet;
+  unit: import("./context/WeightUnit").WeightUnit;
+  onUpdate: (weightKg: number | null, repsActual: number | null, completed: boolean) => void;
+}) {
+  const [weightInput, setWeightInput] = useState(
+    set.weight_kg != null ? fromKg(set.weight_kg, unit).toFixed(1) : ""
+  );
+  const [repsInput, setRepsInput] = useState(
+    set.reps_actual != null ? String(set.reps_actual) : ""
+  );
+
+  function commit(rawWeight: string, rawReps: string, done: boolean) {
+    const wNum = rawWeight !== "" ? parseFloat(rawWeight) : null;
+    const rNum = rawReps !== "" ? parseInt(rawReps, 10) : null;
+    onUpdate(
+      wNum != null && !isNaN(wNum) ? toKg(wNum, unit) : null,
+      rNum != null && !isNaN(rNum) ? rNum : null,
+      done,
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 1fr 32px", gap: 6, alignItems: "center" }}>
+      <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textAlign: "center" }}>
+        {set.set_number}
+      </span>
+      <input
+        type="number"
+        min={0}
+        step={0.5}
+        placeholder={`wt (${unit})`}
+        value={weightInput}
+        onChange={e => setWeightInput(e.target.value)}
+        style={{ fontSize: 13 }}
+        onBlur={() => commit(weightInput, repsInput, set.completed)}
+      />
+      <input
+        type="number"
+        min={0}
+        placeholder="reps"
+        value={repsInput}
+        onChange={e => setRepsInput(e.target.value)}
+        style={{ fontSize: 13 }}
+        onBlur={() => commit(weightInput, repsInput, set.completed)}
+      />
+      <button
+        type="button"
+        onClick={() => commit(weightInput, repsInput, !set.completed)}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: "var(--radius-sm)",
+          border: `2px solid ${set.completed ? "var(--accent)" : "var(--border)"}`,
+          background: set.completed ? "var(--accent)" : "transparent",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 14,
+          color: set.completed ? "#fff" : "var(--muted)",
+          transition: "all 0.15s",
+        }}
+        title={set.completed ? "Mark incomplete" : "Mark complete"}
+      >
+        {set.completed ? "✓" : ""}
+      </button>
+    </div>
+  );
+}
+
+function WorkoutSessionPanel({
+  session,
+  unit,
+  onStart,
+  onUpsertSet,
+}: {
+  session: WorkoutSessionDay;
+  unit: import("./context/WeightUnit").WeightUnit;
+  onStart: () => void;
+  onUpsertSet: (exId: string, setNum: number, wkg: number | null, reps: number | null, done: boolean) => void;
+}) {
+  const [open, setOpen] = useState(!!session.session_id);
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && !session.session_id) onStart();
+  }
+
+  const allDone = session.session_id != null &&
+    session.exercises.every(ex => ex.logged_sets.every(s => s.completed));
+
+  return (
+    <div style={{ borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={toggle}
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "10px 12px",
+          background: "var(--surface2)",
+          border: "none",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontWeight: 700, fontSize: 14 }}>{session.program_name}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {allDone && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "2px 8px", borderRadius: 999 }}>
+              Done
+            </span>
+          )}
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{open ? "▲" : "▼"}</span>
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "12px", display: "grid", gap: 14 }}>
+          {session.exercises.map(ex => (
+            <div key={ex.id}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "baseline", gap: 8 }}>
+                {ex.name}
+                <span style={{ fontWeight: 400, fontSize: 11, color: "var(--muted)" }}>
+                  {ex.sets} × {ex.reps_min === ex.reps_max ? ex.reps_min : `${ex.reps_min}–${ex.reps_max}`} reps
+                </span>
+              </div>
+              <div style={{ display: "grid", gap: 4 }}>
+                {ex.logged_sets.map(ls => (
+                  <SetRow
+                    key={ls.set_number}
+                    set={ls}
+                    unit={unit}
+                    onUpdate={(wkg, reps, done) => onUpsertSet(ex.id, ls.set_number, wkg, reps, done)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({
+  label, value, unit, accent, sub, pct, onClick,
+}: {
+  label: string; value: number | string; unit: string; accent: string; sub?: string; pct?: number; onClick?: () => void;
 }) {
   return (
-    <div className="card" style={{ borderTop: `3px solid ${accent}` }}>
+    <div
+      className="card"
+      style={{ borderTop: `3px solid ${accent}`, cursor: onClick ? "pointer" : undefined }}
+      onClick={onClick}
+    >
       <div className="card-label">{label}</div>
       <div className="card-value" style={{ color: accent }}>
         {value}<span style={{ fontSize: 14, fontWeight: 600, marginLeft: 4, color: "var(--muted)" }}>{unit}</span>

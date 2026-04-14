@@ -53,6 +53,10 @@ function SidebarInner() {
           <i className="fa-solid fa-box-open nav-icon" />
           {!collapsed && <span>Pantry</span>}
         </a>
+        <a href="/workouts" className="nav-link" title="Workouts">
+          <i className="fa-solid fa-dumbbell nav-icon" />
+          {!collapsed && <span>Workouts</span>}
+        </a>
         <a href="/nudge" className="nav-link" title="Nudge">
           <i className="fa-solid fa-bell nav-icon" />
           {!collapsed && <span>Nudge</span>}
