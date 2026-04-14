@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { WeightUnitProvider } from "../context/WeightUnit";
 import { NutritionGoalsProvider } from "../context/NutritionGoals";
 
@@ -8,6 +9,7 @@ const SIDEBAR_STORAGE_KEY = "intake_sidebar_collapsed";
 
 function SidebarInner() {
   const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -89,23 +91,29 @@ function SidebarInner() {
         </a>
       </aside>
 
-      {/* Overlay for mobile when sidebar is open */}
-      {!collapsed && (
-        <div
-          className="sidebar-overlay"
-          onClick={toggleSidebar}
-          style={{
-            display: "none",
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 9,
-          }}
-        />
-      )}
+      {/* Bottom nav for mobile */}
+      <nav className="bottom-nav">
+        <a href="/" className={`bottom-nav-item${pathname === "/" ? " active" : ""}`}>
+          <i className="fa-solid fa-book-open" />
+          <span>Ledger</span>
+        </a>
+        <a href="/recipes" className={`bottom-nav-item${pathname?.startsWith("/recipes") ? " active" : ""}`}>
+          <i className="fa-solid fa-bowl-food" />
+          <span>Recipes</span>
+        </a>
+        <a href="/workouts" className={`bottom-nav-item${pathname === "/workouts" ? " active" : ""}`}>
+          <i className="fa-solid fa-dumbbell" />
+          <span>Workouts</span>
+        </a>
+        <a href="/metrics" className={`bottom-nav-item${pathname === "/metrics" ? " active" : ""}`}>
+          <i className="fa-solid fa-chart-line" />
+          <span>Metrics</span>
+        </a>
+        <a href="/settings" className={`bottom-nav-item${pathname === "/settings" ? " active" : ""}`}>
+          <i className="fa-solid fa-gear" />
+          <span>Settings</span>
+        </a>
+      </nav>
     </>
   );
 }

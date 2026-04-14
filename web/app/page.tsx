@@ -50,6 +50,7 @@ type SessionExercise = {
   reps_min: number;
   reps_max: number;
   logged_sets: SessionSet[];
+  prev_logged_sets?: SessionSet[];
 };
 
 type WorkoutSessionDay = {
@@ -393,31 +394,33 @@ function LedgerInner() {
             />
           </div>
 
-          <MacroSummaryCard
-            protein_g={data.protein_g}
-            carbs_g={data.carbs_g}
-            fat_g={data.fat_g}
-            fiber_g={data.fiber_g}
-          />
-          <WaterTracker date={date} />
+          {/* Macros + Water row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, alignItems: "stretch" }}>
+            <div style={{ gridColumn: "1 / 4", minWidth: 0 }}>
+              <MacroSummaryCard
+                protein_g={data.protein_g}
+                carbs_g={data.carbs_g}
+                fat_g={data.fat_g}
+                fiber_g={data.fiber_g}
+              />
+            </div>
+            <WaterTracker date={date} />
+          </div>
 
           {/* Workout card */}
           {workoutSessions.length > 0 && (
-            <div className="card" style={{ marginTop: 16 }}>
-              <div className="card-label" style={{ marginBottom: 12 }}>Workout</div>
-              <div style={{ display: "grid", gap: 4 }}>
-                {workoutSessions.map(session => (
-                  <WorkoutSessionPanel
-                    key={session.program_id}
-                    session={session}
-                    unit={unit}
-                    onStart={() => startWorkoutSession(session.program_id)}
-                    onUpsertSet={(exId, setNum, wkg, reps, done) =>
-                      upsertSet(session.session_id!, exId, setNum, wkg, reps, done)
-                    }
-                  />
-                ))}
-              </div>
+            <div className="card" style={{ marginTop: 16, padding: 0, overflow: "hidden" }}>
+              {workoutSessions.map(session => (
+                <WorkoutSessionPanel
+                  key={session.program_id}
+                  session={session}
+                  unit={unit}
+                  onStart={() => startWorkoutSession(session.program_id)}
+                  onUpsertSet={(exId, setNum, wkg, reps, done) =>
+                    upsertSet(session.session_id!, exId, setNum, wkg, reps, done)
+                  }
+                />
+              ))}
             </div>
           )}
 
@@ -630,6 +633,14 @@ function SetRow({
   );
 }
 
+function setLogSummary(sets: SessionSet[] | undefined | null, unit: import("./context/WeightUnit").WeightUnit) {
+  if (!sets?.length) return null;
+  return sets.map(s => {
+    const w = s.weight_kg != null ? `${fromKg(s.weight_kg, unit).toFixed(1).replace(/\.0$/, "")}×` : "";
+    return `${w}${s.reps_actual ?? "?"}`;
+  }).join(" | ");
+}
+
 function WorkoutSessionPanel({
   session,
   unit,
@@ -641,11 +652,19 @@ function WorkoutSessionPanel({
   onStart: () => void;
   onUpsertSet: (exId: string, setNum: number, wkg: number | null, reps: number | null, done: boolean) => void;
 }) {
-  const [open, setOpen] = useState(!!session.session_id);
+  const storageKey = `intake_workout_open_${session.program_id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored !== null) return stored === "1";
+    } catch { /* ignore */ }
+    return !!session.session_id;
+  });
 
   async function toggle() {
     const next = !open;
     setOpen(next);
+    try { localStorage.setItem(storageKey, next ? "1" : "0"); } catch { /* ignore */ }
     if (next && !session.session_id) onStart();
   }
 
@@ -669,7 +688,7 @@ function WorkoutSessionPanel({
           textAlign: "left",
         }}
       >
-        <span style={{ fontWeight: 700, fontSize: 14 }}>{session.program_name}</span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{session.program_name}</span>
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {allDone && (
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "2px 8px", borderRadius: 999 }}>
@@ -684,11 +703,16 @@ function WorkoutSessionPanel({
         <div style={{ padding: "12px", display: "grid", gap: 14 }}>
           {session.exercises.map(ex => (
             <div key={ex.id}>
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "baseline", gap: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                 {ex.name}
                 <span style={{ fontWeight: 400, fontSize: 11, color: "var(--muted)" }}>
                   {ex.sets} × {ex.reps_min === ex.reps_max ? ex.reps_min : `${ex.reps_min}–${ex.reps_max}`} reps
                 </span>
+                {setLogSummary(ex.prev_logged_sets ?? [], unit) && (
+                  <span style={{ fontWeight: 500, fontSize: 11, color: "var(--accent2)", marginLeft: 2 }}>
+                    {setLogSummary(ex.prev_logged_sets ?? [], unit)}
+                  </span>
+                )}
               </div>
               <div style={{ display: "grid", gap: 4 }}>
                 {ex.logged_sets.map(ls => (

@@ -248,7 +248,8 @@ type SessionSet struct {
 
 type SessionExercise struct {
 	WorkoutExercise
-	LoggedSets []SessionSet `json:"logged_sets"`
+	LoggedSets     []SessionSet `json:"logged_sets"`
+	PrevLoggedSets []SessionSet `json:"prev_logged_sets"`
 }
 
 type WorkoutSessionDay struct {
@@ -368,6 +369,33 @@ func (a *App) HandleGetWorkoutSessionsForDate(w http.ResponseWriter, r *http.Req
 			}
 
 			ex.LoggedSets = loggedSets
+
+			// Fetch completed sets from the most recent previous session
+			prevRows, err := a.DB.Query(r.Context(),
+				`SELECT set_number, weight_kg, reps_actual, completed
+				 FROM workout_session_sets
+				 WHERE session_id = (
+				   SELECT id FROM workout_sessions
+				   WHERE user_id=$1 AND program_id=$2 AND date < $3
+				   ORDER BY date DESC LIMIT 1
+				 ) AND exercise_id=$4 AND completed=true
+				 ORDER BY set_number`,
+				userID, p.id, date, ex.ID,
+			)
+			if err == nil {
+				for prevRows.Next() {
+					var s SessionSet
+					if err := prevRows.Scan(&s.SetNumber, &s.WeightKg, &s.RepsActual, &s.Completed); err != nil {
+						continue
+					}
+					ex.PrevLoggedSets = append(ex.PrevLoggedSets, s)
+				}
+				prevRows.Close()
+			}
+			if ex.PrevLoggedSets == nil {
+				ex.PrevLoggedSets = []SessionSet{}
+			}
+
 			sd.Exercises = append(sd.Exercises, ex)
 		}
 		exRows.Close()
