@@ -214,6 +214,17 @@ CREATE TABLE IF NOT EXISTS workout_session_sets (
   UNIQUE(session_id, exercise_id, set_number)
 );
 
+-- ---------------------------------------------------- meal_plan_entries ---
+CREATE TABLE IF NOT EXISTS meal_plan_entries (
+  id           UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date         DATE        NOT NULL,
+  meal         TEXT        NOT NULL,  -- breakfast | lunch | dinner
+  food_item_id UUID        NOT NULL REFERENCES food_items(id) ON DELETE CASCADE,
+  servings     NUMERIC     NOT NULL DEFAULT 1,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- --------------------------------------------------------- default user ---
 INSERT INTO users (id, email, display_name)
 VALUES ('00000000-0000-0000-0000-000000000001', 'local@intake', 'Local User')

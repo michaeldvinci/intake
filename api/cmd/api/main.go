@@ -148,6 +148,11 @@ func main() {
 	r.Put("/nudges/{id}", app.HandleUpdateNudge)
 	r.Delete("/nudges/{id}", app.HandleDeleteNudge)
 	r.Post("/nudges/{id}/test", app.HandleTestNudge)
+	r.Get("/meal-plan", app.HandleListMealPlan)
+	r.Post("/meal-plan", app.HandleAddMealPlanEntry)
+	r.Delete("/meal-plan/{id}", app.HandleDeleteMealPlanEntry)
+	r.Get("/meal-plan/export.ics", app.HandleExportMealPlanICS)
+
 	r.Get("/workout-programs", app.HandleListWorkoutPrograms)
 	r.Post("/workout-programs", app.HandleCreateWorkoutProgram)
 	r.Put("/workout-programs/{id}", app.HandleUpdateWorkoutProgram)

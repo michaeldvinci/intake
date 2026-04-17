@@ -57,6 +57,12 @@ export default function SettingsPage() {
   const [reportFrom, setReportFrom] = useState(() => addDaysISO(todayISOInAppTZ(), -30));
   const [reportTo, setReportTo] = useState(() => todayISOInAppTZ());
 
+  // Meal plan settings
+  const [mealPlanWeeks, setMealPlanWeeks] = useState("2");
+  const [breakfastTime, setBreakfastTime] = useState("08:00");
+  const [lunchTime, setLunchTime] = useState("12:30");
+  const [dinnerTime, setDinnerTime] = useState("19:00");
+
   // AI review
   const [aiProvider, setAiProvider] = useState<AIProvider>("claude");
   const [aiKey, setAiKey] = useState("");
@@ -79,6 +85,10 @@ export default function SettingsPage() {
         if (s.ai_provider) setAiProvider(s.ai_provider as AIProvider);
         if (s.ai_api_key) { setAiKey(s.ai_api_key); setAiKeySaved(true); }
         if (s.ai_review_time) setAiReviewTime(s.ai_review_time);
+        if (s.meal_plan_weeks) setMealPlanWeeks(s.meal_plan_weeks);
+        if (s.meal_plan_breakfast_time) setBreakfastTime(s.meal_plan_breakfast_time);
+        if (s.meal_plan_lunch_time) setLunchTime(s.meal_plan_lunch_time);
+        if (s.meal_plan_dinner_time) setDinnerTime(s.meal_plan_dinner_time);
       })
       .catch(() => {});
 
@@ -351,6 +361,48 @@ export default function SettingsPage() {
           ))}
         </div>
         <button className="btn btn-primary" onClick={saveGoals}>Save Goals</button>
+      </div>
+
+      {/* ── Meal Plan ── */}
+      <div className="card">
+        <SectionHeader title="Meal Plan" description="Controls the calendar planning view and ICS export." />
+        <div style={{ display: "grid", gap: 14 }}>
+          <div>
+            <div className="field-label">Weeks to export (ICS)</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["1","2","3","4"].map(w => (
+                <button
+                  key={w}
+                  className="btn btn-ghost"
+                  onClick={() => setMealPlanWeeks(w)}
+                  style={{ flex: 1, borderColor: mealPlanWeeks === w ? "var(--accent)" : undefined }}
+                >{w}w</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            {([["Breakfast", breakfastTime, setBreakfastTime], ["Lunch", lunchTime, setLunchTime], ["Dinner", dinnerTime, setDinnerTime]] as const).map(([label, val, setter]) => (
+              <div key={label}>
+                <label className="field-label">{label}</label>
+                <input type="time" value={val} onChange={e => setter(e.target.value)} />
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={async () => {
+              await Promise.all([
+                fetch(`${API}/settings?user_id=${USER_ID}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "meal_plan_weeks", value: mealPlanWeeks }) }),
+                fetch(`${API}/settings?user_id=${USER_ID}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "meal_plan_breakfast_time", value: breakfastTime }) }),
+                fetch(`${API}/settings?user_id=${USER_ID}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "meal_plan_lunch_time", value: lunchTime }) }),
+                fetch(`${API}/settings?user_id=${USER_ID}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "meal_plan_dinner_time", value: dinnerTime }) }),
+              ]);
+              setStatus({ ok: true, msg: "Meal plan settings saved." });
+            }}
+          >
+            Save
+          </button>
+        </div>
       </div>
 
       {/* ── AI Daily Review ── */}

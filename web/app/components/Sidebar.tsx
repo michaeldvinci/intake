@@ -105,9 +105,9 @@ function SidebarInner() {
           <i className="fa-solid fa-dumbbell" />
           <span>Workouts</span>
         </a>
-        <a href="/metrics" className={`bottom-nav-item${pathname === "/metrics" ? " active" : ""}`}>
-          <i className="fa-solid fa-chart-line" />
-          <span>Metrics</span>
+        <a href="/calendar" className={`bottom-nav-item${pathname === "/calendar" ? " active" : ""}`}>
+          <i className="fa-solid fa-calendar-days" />
+          <span>Calendar</span>
         </a>
         <a href="/settings" className={`bottom-nav-item${pathname === "/settings" ? " active" : ""}`}>
           <i className="fa-solid fa-gear" />
