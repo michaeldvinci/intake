@@ -11,10 +11,7 @@ import (
 )
 
 func (a *App) HandleListIngredientCategories(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	rows, err := a.DB.Query(r.Context(), `
 		SELECT ingredient_name, category_slug
 		FROM ingredient_categories
@@ -39,10 +36,7 @@ func (a *App) HandleListIngredientCategories(w http.ResponseWriter, r *http.Requ
 }
 
 func (a *App) HandleReplaceIngredientCategories(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	var body struct {
 		Items []IngredientCategory `json:"items"`
 	}
@@ -83,10 +77,7 @@ func (a *App) HandleReplaceIngredientCategories(w http.ResponseWriter, r *http.R
 }
 
 func (a *App) HandleSetIngredientCategoryBody(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	var body struct {
 		IngredientName string `json:"ingredient_name"`
 		CategorySlug   string `json:"category_slug"`
@@ -113,10 +104,7 @@ func (a *App) HandleSetIngredientCategoryBody(w http.ResponseWriter, r *http.Req
 }
 
 func (a *App) HandleSetIngredientCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	rawName, _ := url.PathUnescape(chi.URLParam(r, "name"))
 	name := strings.TrimSpace(strings.ToLower(rawName))
 	if name == "" {
@@ -143,10 +131,7 @@ func (a *App) HandleSetIngredientCategory(w http.ResponseWriter, r *http.Request
 }
 
 func (a *App) HandleDeleteIngredientCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	rawName, _ := url.PathUnescape(chi.URLParam(r, "name"))
 	name := strings.TrimSpace(strings.ToLower(rawName))
 	if name == "" {

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 const WATER_GOAL_KEY = "intake_water_goal";
 const DEFAULT_GOAL = 8;
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 function clampGoal(value: number) {
@@ -22,7 +21,7 @@ export function WaterTracker({ date }: { date: string }) {
   }, []);
 
   useEffect(() => {
-    fetch(`${API}/activity/water?user_id=${USER_ID}&date=${date}`)
+    fetch(`${API}/activity/water?date=${date}`)
       .then(r => r.ok ? r.json() : { glasses: 0 })
       .then(data => setDrank(Math.max(0, Number(data.glasses) || 0)))
       .catch(() => setDrank(0));
@@ -33,7 +32,7 @@ export function WaterTracker({ date }: { date: string }) {
     fetch(`${API}/activity/water`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: USER_ID, date, glasses: next }),
+      body: JSON.stringify({ date, glasses: next }),
     }).catch(() => {});
   }
 

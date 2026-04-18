@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Sidebar } from "./components/Sidebar";
+import { AuthProvider } from "./context/Auth";
 
 export const metadata = {
   title: "Intake",
@@ -18,13 +19,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <div className="shell">
+        <AuthProvider>
           <Sidebar>
-            <main className="main-content">
-              {children}
-            </main>
+            <main className="main-content">{children}</main>
           </Sidebar>
-        </div>
+        </AuthProvider>
       </body>
     </html>
   );

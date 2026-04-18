@@ -22,9 +22,7 @@ func (a *App) HandleBodyWeight(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.MeasuredAt == "" {
 		req.MeasuredAt = a.now().Format(time.RFC3339)
 	}
@@ -64,9 +62,7 @@ func (a *App) HandleDailyActivity(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.Date == "" {
 		req.Date = a.now().Format("2006-01-02")
 	}
@@ -86,10 +82,7 @@ func (a *App) HandleDailyActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleGetWater(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = a.now().Format("2006-01-02")
@@ -120,9 +113,7 @@ func (a *App) HandleSetWater(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.Date == "" {
 		req.Date = a.now().Format("2006-01-02")
 	}

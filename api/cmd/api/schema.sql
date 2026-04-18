@@ -5,11 +5,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ------------------------------------------------------------------ users ---
 CREATE TABLE IF NOT EXISTS users (
-  id           UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email        TEXT        UNIQUE,
-  display_name TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  id            UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email         TEXT        UNIQUE,
+  display_name  TEXT,
+  password_hash TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name  TEXT;
 
 -- ------------------------------------------------------------ food_items ---
 CREATE TABLE IF NOT EXISTS food_items (

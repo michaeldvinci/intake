@@ -7,10 +7,7 @@ import (
 )
 
 func (a *App) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	rows, err := a.DB.Query(r.Context(), `
 		SELECT key, value FROM user_settings WHERE user_id = $1
 	`, userID)
@@ -32,10 +29,7 @@ func (a *App) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandlePutSetting(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	var req struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`

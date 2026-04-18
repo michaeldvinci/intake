@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { addDaysISO, appDateParts, todayISOInAppTZ } from "../lib/date";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -114,7 +113,7 @@ export default function CalendarPage() {
   useEffect(() => {
     const from = toDateStr(year, month, 1);
     const to = toDateStr(year, month, daysInMonth(year, month));
-    fetch(`${API}/log/range?user_id=${USER_ID}&from=${from}&to=${to}`)
+    fetch(`${API}/log/range?from=${from}&to=${to}`)
       .then(r => r.ok ? r.json() : [])
       .then((data: DayTotal[]) => {
         const map: Record<string, number> = {};
@@ -125,7 +124,7 @@ export default function CalendarPage() {
   }, [year, month]);
 
   useEffect(() => {
-    fetch(`${API}/settings?user_id=${USER_ID}`)
+    fetch(`${API}/settings`)
       .then(r => r.ok ? r.json() : {})
       .then((s: Record<string, string>) => {
         if (s.meal_plan_weeks) setPlanWeeks(Math.max(1, Math.min(4, Number(s.meal_plan_weeks) || 1)));
@@ -141,8 +140,8 @@ export default function CalendarPage() {
   useEffect(() => {
     setAgendaLoading(true);
     Promise.all([
-      fetch(`${API}/log/today?user_id=${USER_ID}&date=${selected}`).then(r => r.ok ? r.json() : []),
-      fetch(`${API}/dashboard/today?user_id=${USER_ID}&date=${selected}`).then(r => r.ok ? r.json() : null),
+      fetch(`${API}/log/today?date=${selected}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API}/dashboard/today?date=${selected}`).then(r => r.ok ? r.json() : null),
     ]).then(([log, dash]) => {
       setAgendaLog(log || []);
       setAgendaDash(dash);
@@ -154,7 +153,7 @@ export default function CalendarPage() {
   const weekEnd = addDaysISO(weekStart, 6);
 
   const fetchPlan = useCallback(async () => {
-    const res = await fetch(`${API}/meal-plan?user_id=${USER_ID}&start=${weekStart}&end=${weekEnd}`);
+    const res = await fetch(`${API}/meal-plan?start=${weekStart}&end=${weekEnd}`);
     if (res.ok) setPlanEntries(await res.json());
   }, [weekStart, weekEnd]);
 
@@ -163,7 +162,7 @@ export default function CalendarPage() {
   // ── plan actions ──────────────────────────────────────────────────────────────
 
   async function removePlanEntry(id: string) {
-    await fetch(`${API}/meal-plan/${id}?user_id=${USER_ID}`, { method: "DELETE" });
+    await fetch(`${API}/meal-plan/${id}`, { method: "DELETE" });
     setPlanEntries(prev => prev.filter(e => e.id !== id));
   }
 
@@ -185,7 +184,7 @@ export default function CalendarPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_id: USER_ID,
+
         date: dayModal,
         meal: addMeal,
         food_item_id: addFood,
@@ -243,7 +242,7 @@ export default function CalendarPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.5px" }}>Calendar</h1>
         <a
-          href={`${API}/meal-plan/export.ics?user_id=${USER_ID}&weeks=${planWeeks}`}
+          href={`${API}/meal-plan/export.ics?weeks=${planWeeks}`}
           className="btn btn-ghost"
           style={{ fontSize: 12, textDecoration: "none" }}
           download="intake-meal-plan.ics"

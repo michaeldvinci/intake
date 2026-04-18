@@ -28,9 +28,7 @@ func (a *App) HandleCreatePreset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.Name == "" || len(req.Items) == 0 {
 		writeJSON(w, 400, map[string]any{"error": "name and items required"})
 		return
@@ -75,10 +73,7 @@ func (a *App) HandleCreatePreset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleApplyPreset(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	presetID := chi.URLParam(r, "id")
 	if presetID == "" {
 		writeJSON(w, 400, map[string]any{"error": "missing preset id"})

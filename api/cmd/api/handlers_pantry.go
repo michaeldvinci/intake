@@ -13,10 +13,7 @@ import (
 )
 
 func (a *App) HandleListPantry(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	rows, err := a.DB.Query(r.Context(), `
 		SELECT fi.id, fi.name, COALESCE(fi.brand,''), COALESCE(fi.serving_label,'1 serving'),
 		       fi.calories_per_serving, fi.protein_g_per_serving, fi.carbs_g_per_serving, fi.fat_g_per_serving,
@@ -55,10 +52,7 @@ func (a *App) HandleListPantry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleUpsertPantry(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	foodItemID := chi.URLParam(r, "food_item_id")
 	var req struct {
 		Quantity  float64 `json:"quantity"`
@@ -91,10 +85,7 @@ func (a *App) HandleUpsertPantry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleDeletePantry(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	foodItemID := chi.URLParam(r, "food_item_id")
 	_, err := a.DB.Exec(r.Context(), `
 		DELETE FROM pantry_items WHERE user_id = $1 AND food_item_id = $2
@@ -107,10 +98,7 @@ func (a *App) HandleDeletePantry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleDeductPantry(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	var req struct {
 		FoodItemID string  `json:"food_item_id"`
 		Servings   float64 `json:"servings"`

@@ -67,10 +67,7 @@ type CreateRecipeRequest struct {
 }
 
 func (a *App) HandleListRecipes(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	rows, err := a.DB.Query(r.Context(), `
     SELECT r.id, fi.name, COALESCE(fi.brand,''), fi.serving_label,
            COALESCE(r.instructions,''), r.yield_count,
@@ -109,9 +106,7 @@ func (a *App) HandleCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.Name == "" {
 		writeJSON(w, 400, map[string]any{"error": "name required"})
 		return
@@ -172,10 +167,7 @@ func (a *App) HandleCreateRecipe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleGetRecipe(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSON(w, 400, map[string]any{"error": "missing recipe id"})
@@ -232,9 +224,7 @@ func (a *App) HandleUpdateRecipe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.Name == "" {
 		writeJSON(w, 400, map[string]any{"error": "name required"})
 		return
@@ -275,9 +265,7 @@ func (a *App) HandleAddRecipeIngredient(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.FoodItemID == "" || req.AmountG <= 0 {
 		writeJSON(w, 400, map[string]any{"error": "food_item_id and amount_g required"})
 		return
@@ -317,9 +305,7 @@ func (a *App) HandleUpdateRecipeIngredient(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.AmountG <= 0 {
 		writeJSON(w, 400, map[string]any{"error": "amount_g required"})
 		return
@@ -363,9 +349,7 @@ func (a *App) HandleReplaceRecipeIngredients(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 	ctx := r.Context()
 	tx, err := a.DB.Begin(ctx)
 	if err != nil {
@@ -406,10 +390,7 @@ func (a *App) HandleReplaceRecipeIngredients(w http.ResponseWriter, r *http.Requ
 func (a *App) HandleDeleteRecipeIngredient(w http.ResponseWriter, r *http.Request) {
 	recipeID := chi.URLParam(r, "id")
 	ingredientID := chi.URLParam(r, "ingredient_id")
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	if recipeID == "" || ingredientID == "" {
 		writeJSON(w, 400, map[string]any{"error": "missing ids"})
 		return
@@ -448,9 +429,7 @@ func (a *App) HandleExportRecipeIngredients(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if len(req.RecipeIDs) == 0 {
 		writeJSON(w, 400, map[string]any{"error": "recipe_ids required"})
 		return

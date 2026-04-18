@@ -39,9 +39,7 @@ func (a *App) HandleCreateFoodItem(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "name required"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.ServingLabel == "" {
 		req.ServingLabel = "1 serving"
 	}

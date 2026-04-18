@@ -4,12 +4,17 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { WeightUnitProvider } from "../context/WeightUnit";
 import { NutritionGoalsProvider } from "../context/NutritionGoals";
+import { useAuth } from "../context/Auth";
 
 const SIDEBAR_STORAGE_KEY = "intake_sidebar_collapsed";
 
 function SidebarInner() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const { user, logout } = useAuth();
+
+  // Don't render nav shell on login page
+  if (pathname === "/login") return null;
 
   useEffect(() => {
     const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -85,6 +90,31 @@ function SidebarInner() {
           {!collapsed && <span>Collapse</span>}
         </button>
 
+        <div className="nav-link" style={{ overflow: "hidden" }}>
+          <div style={{
+            width: 18, height: 18, borderRadius: "50%",
+            background: "var(--accent)", color: "#fff",
+            fontSize: 10, fontWeight: 700,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
+          }}>
+            {user ? (user.display_name || user.email).charAt(0).toUpperCase() : ""}
+          </div>
+          {!collapsed && (
+            <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user ? (user.display_name || user.email) : ""}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={logout}
+          className="nav-link"
+          style={{ width: "100%", background: "none", border: "none", cursor: "pointer" }}
+          title="Sign out"
+        >
+          <i className="fa-solid fa-arrow-right-from-bracket nav-icon" />
+          {!collapsed && <span>Sign out</span>}
+        </button>
         <a href="/settings" className="nav-link" style={{ width: "100%" }} title="Settings">
           <i className="fa-solid fa-gear nav-icon" />
           {!collapsed && <span>Settings</span>}
@@ -122,9 +152,21 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
   return (
     <WeightUnitProvider>
       <NutritionGoalsProvider>
-        <SidebarInner />
-        {children}
+        <SidebarShell>{children}</SidebarShell>
       </NutritionGoalsProvider>
     </WeightUnitProvider>
+  );
+}
+
+function SidebarShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
+  return (
+    <div className="shell">
+      <SidebarInner />
+      {children}
+    </div>
   );
 }

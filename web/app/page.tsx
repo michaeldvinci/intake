@@ -11,7 +11,6 @@ import { useNutritionGoals } from "./context/NutritionGoals";
 import { addDaysISO, formatDateInAppTZ, noonInAppTZ, todayISOInAppTZ } from "./lib/date";
 import { useWeightUnit, toKg, fromKg } from "./context/WeightUnit";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 type DashboardData = {
@@ -149,7 +148,7 @@ function LedgerInner() {
       await fetch(`${base}/activity/daily`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: USER_ID, date, steps, active_calories_est: activeKcal }),
+        body: JSON.stringify({ date, steps, active_calories_est: activeKcal }),
       });
       await fetchAll();
       setStepsModalOpen(false);
@@ -175,10 +174,10 @@ function LedgerInner() {
     try {
       const base = API.replace(/\/+$/, "");
       const [dashRes, logRes, fiRes, wsRes] = await Promise.all([
-        fetch(`${base}/dashboard/today?user_id=${USER_ID}&date=${date}`),
-        fetch(`${base}/log/today?user_id=${USER_ID}&date=${date}`),
+        fetch(`${base}/dashboard/today?date=${date}`),
+        fetch(`${base}/log/today?date=${date}`),
         fetch(`${base}/food-items`),
-        fetch(`${base}/workout-sessions/day?user_id=${USER_ID}&date=${date}`),
+        fetch(`${base}/workout-sessions/day?date=${date}`),
       ]);
       if (!dashRes.ok) throw new Error("dashboard fetch failed");
       setData(await dashRes.json());
@@ -198,7 +197,7 @@ function LedgerInner() {
     const res = await fetch(`${base}/log/${id}`, { method: "DELETE" });
     if (res.ok) {
       setEntries(prev => prev.filter(e => e.id !== id));
-      const dashRes = await fetch(`${base}/dashboard/today?user_id=${USER_ID}&date=${date}`);
+      const dashRes = await fetch(`${base}/dashboard/today?date=${date}`);
       if (dashRes.ok) setData(await dashRes.json());
     }
   }
@@ -223,7 +222,7 @@ function LedgerInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: USER_ID,
+
           food_item_id: selectedFood,
           servings: Number(servings),
           meal: modalMeal,
@@ -231,7 +230,7 @@ function LedgerInner() {
         }),
       });
       if (res.ok) {
-        fetch(`${API}/pantry/deduct?user_id=${USER_ID}`, {
+        fetch(`${API}/pantry/deduct`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ food_item_id: selectedFood, servings: Number(servings) }),
@@ -259,7 +258,7 @@ function LedgerInner() {
       const res = await fetch(`${base}/recipes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: USER_ID, name, instructions: "", yield_count: 1 }),
+        body: JSON.stringify({ name, instructions: "", yield_count: 1 }),
       });
       const body = await res.json().catch(() => ({}));
       if (res.ok && body.id) {

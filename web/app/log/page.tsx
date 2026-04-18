@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { addDaysISO, formatDateInAppTZ, noonInAppTZ, todayISOInAppTZ } from "../lib/date";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 function prevDay(dateStr: string) {
@@ -159,7 +158,7 @@ function LogPageInner() {
     try {
       const [fiRes, logRes] = await Promise.all([
         fetchWithFallback(`/food-items`),
-        fetchWithFallback(`/log/today?user_id=${USER_ID}&date=${date}`),
+        fetchWithFallback(`/log/today?date=${date}`),
       ]);
       const items: FoodItem[] = await fiRes.res.json();
       setFoodItems(items);
@@ -223,7 +222,7 @@ function LogPageInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: USER_ID,
+
           food_item_id: selectedFood,
           servings: Number(servings),
           meal: modal.meal,
@@ -232,7 +231,7 @@ function LogPageInner() {
       });
       if (result.res.ok) {
         // Fire-and-forget pantry deduction
-        fetch(`${API}/pantry/deduct?user_id=${USER_ID}`, {
+        fetch(`${API}/pantry/deduct`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ food_item_id: selectedFood, servings: Number(servings) }),
@@ -265,7 +264,7 @@ function LogPageInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: USER_ID,
+
           name: form.name, brand: form.brand,
           serving_label: form.serving_label || "1 serving",
           calories_per_serving: Number(form.calories) || 0,

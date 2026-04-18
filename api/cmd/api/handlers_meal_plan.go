@@ -31,10 +31,7 @@ type MealPlanEntry struct {
 // ── GET /meal-plan ─────────────────────────────────────────────────────────────
 
 func (a *App) HandleListMealPlan(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	start := r.URL.Query().Get("start")
 	end := r.URL.Query().Get("end")
 	if start == "" || end == "" {
@@ -91,9 +88,7 @@ func (a *App) HandleAddMealPlanEntry(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.Date == "" || req.Meal == "" || req.FoodItemID == "" {
 		writeJSON(w, 400, map[string]any{"error": "date, meal, food_item_id required"})
 		return
@@ -119,10 +114,7 @@ func (a *App) HandleAddMealPlanEntry(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) HandleDeleteMealPlanEntry(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	ct, err := a.DB.Exec(r.Context(),
 		`DELETE FROM meal_plan_entries WHERE id=$1 AND user_id=$2`, id, userID,
 	)
@@ -140,10 +132,7 @@ func (a *App) HandleDeleteMealPlanEntry(w http.ResponseWriter, r *http.Request) 
 // ── GET /meal-plan/export.ics ──────────────────────────────────────────────────
 
 func (a *App) HandleExportMealPlanICS(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 
 	// Fetch meal-time settings
 	settings := map[string]string{}

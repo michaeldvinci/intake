@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log"
@@ -20,10 +22,12 @@ import (
 var schemaSQL string
 
 type App struct {
-	DB  *pgxpool.Pool
-	Loc *time.Location
+	DB        *pgxpool.Pool
+	Loc       *time.Location
+	JWTSecret []byte
 }
 
+// DefaultUserID is used as a fallback owner for data created before multi-user support.
 const DefaultUserID = "00000000-0000-0000-0000-000000000001"
 
 func main() {
@@ -46,6 +50,16 @@ func main() {
 		}
 	}
 
+	secret := os.Getenv("AUTH_SECRET")
+	if secret == "" {
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			log.Fatal("failed to generate random JWT secret:", err)
+		}
+		secret = hex.EncodeToString(b)
+		log.Println("WARNING: AUTH_SECRET not set — sessions will not survive restarts")
+	}
+
 	ctx := context.Background()
 	db, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -58,7 +72,7 @@ func main() {
 	}
 	log.Println("schema applied")
 
-	app := &App{DB: db, Loc: loc}
+	app := &App{DB: db, Loc: loc, JWTSecret: []byte(secret)}
 	if err := app.EnsureRecipePages(context.Background()); err != nil {
 		log.Printf("ensure recipe pages failed: %v", err)
 	}
@@ -80,9 +94,14 @@ func main() {
 	})
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				origin = "*"
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -98,73 +117,86 @@ func main() {
 		writeJSON(w, 200, map[string]any{"ok": true, "time": app.now().Format(time.RFC3339)})
 	})
 
-	r.Get("/dashboard/today", app.HandleDashboardToday)
-	r.Get("/day/totals", app.HandleDayTotals)
-	r.Post("/food-items", app.HandleCreateFoodItem)
-	r.Get("/food-items", app.HandleListFoodItems)
-	r.Get("/food-items/{id}", app.HandleGetFoodItem)
-	r.Put("/food-items/{id}", app.HandleUpdateFoodItem)
-	r.Delete("/food-items/{id}", app.HandleDeleteFoodItem)
-	r.Get("/log/today", app.HandleLogToday)
-	r.Get("/log/range", app.HandleLogRange)
-	r.Post("/log/food", app.HandleLogFood)
-	r.Delete("/log/{id}", app.HandleDeleteLogEntry)
-	r.Post("/body/weight", app.HandleBodyWeight)
-	r.Post("/activity/daily", app.HandleDailyActivity)
-	r.Get("/activity/water", app.HandleGetWater)
-	r.Post("/activity/water", app.HandleSetWater)
-	r.Post("/presets", app.HandleCreatePreset)
-	r.Post("/presets/{id}/apply", app.HandleApplyPreset)
-	r.Get("/recipes", app.HandleListRecipes)
-	r.Post("/recipes", app.HandleCreateRecipe)
-	r.Get("/recipes/{id}", app.HandleGetRecipe)
-	r.Put("/recipes/{id}", app.HandleUpdateRecipe)
-	r.Post("/recipes/{id}/ingredients", app.HandleAddRecipeIngredient)
-	r.Put("/recipes/{id}/ingredients", app.HandleReplaceRecipeIngredients)
-	r.Put("/recipes/{id}/ingredients/{ingredient_id}", app.HandleUpdateRecipeIngredient)
-	r.Delete("/recipes/{id}/ingredients/{ingredient_id}", app.HandleDeleteRecipeIngredient)
-	r.Post("/recipes/export-ingredients", app.HandleExportRecipeIngredients)
-	r.Get("/recipes/{id}/shopping-items", app.HandleGetShoppingItems)
-	r.Put("/recipes/{id}/shopping-items", app.HandleReplaceShoppingItems)
-	r.Get("/recipes/{id}/photo", app.HandleGetRecipePhoto)
-	r.Put("/recipes/{id}/photo", app.HandlePutRecipePhoto)
-	r.Delete("/recipes/{id}/photo", app.HandleDeleteRecipePhoto)
-	r.Get("/shopping-list", app.HandleShoppingList)
-	r.Get("/pantry", app.HandleListPantry)
-	r.Put("/pantry/{food_item_id}", app.HandleUpsertPantry)
-	r.Delete("/pantry/{food_item_id}", app.HandleDeletePantry)
-	r.Post("/pantry/deduct", app.HandleDeductPantry)
-	r.Get("/ingredient-categories", app.HandleListIngredientCategories)
-	r.Put("/ingredient-categories", app.HandleReplaceIngredientCategories)
-	r.Put("/ingredient-categories/set", app.HandleSetIngredientCategoryBody)
-	r.Put("/ingredient-categories/{name}", app.HandleSetIngredientCategory)
-	r.Delete("/ingredient-categories/{name}", app.HandleDeleteIngredientCategory)
-	r.Get("/settings", app.HandleGetSettings)
-	r.Put("/settings", app.HandlePutSetting)
-	r.Post("/ai-review/run", app.HandleTriggerAIReview)
-	r.Get("/ai-review/last", app.HandleGetLastAIReview)
-	r.Get("/nudges", app.HandleListNudges)
-	r.Post("/nudges", app.HandleCreateNudge)
-	r.Put("/nudges/{id}", app.HandleUpdateNudge)
-	r.Delete("/nudges/{id}", app.HandleDeleteNudge)
-	r.Post("/nudges/{id}/test", app.HandleTestNudge)
-	r.Get("/meal-plan", app.HandleListMealPlan)
-	r.Post("/meal-plan", app.HandleAddMealPlanEntry)
-	r.Delete("/meal-plan/{id}", app.HandleDeleteMealPlanEntry)
-	r.Get("/meal-plan/export.ics", app.HandleExportMealPlanICS)
+	// ── Auth (public) ──────────────────────────────────────────────────────────
+	r.Post("/auth/register", app.HandleRegister)
+	r.Post("/auth/login", app.HandleLogin)
+	r.Post("/auth/logout", app.HandleLogout)
 
-	r.Get("/workout-programs", app.HandleListWorkoutPrograms)
-	r.Post("/workout-programs", app.HandleCreateWorkoutProgram)
-	r.Put("/workout-programs/{id}", app.HandleUpdateWorkoutProgram)
-	r.Delete("/workout-programs/{id}", app.HandleDeleteWorkoutProgram)
-	r.Post("/workout-programs/{id}/exercises", app.HandleCreateExercise)
-	r.Delete("/workout-programs/{id}/exercises/{exercise_id}", app.HandleDeleteExercise)
-	r.Get("/workout-sessions/day", app.HandleGetWorkoutSessionsForDate)
-	r.Post("/workout-sessions", app.HandleCreateWorkoutSession)
-	r.Put("/workout-session-sets", app.HandleUpsertSessionSet)
-	r.Get("/data/export", app.HandleExportData)
-	r.Get("/data/export/markdown", app.HandleExportMarkdown)
-	r.Post("/data/import", app.HandleImportData)
+	// ── Protected routes ───────────────────────────────────────────────────────
+	r.Group(func(r chi.Router) {
+		r.Use(app.RequireAuth)
+
+		r.Get("/auth/me", app.HandleMe)
+		r.Get("/auth/api-key", app.HandleGetAPIKey)
+		r.Post("/auth/api-key", app.HandleGenerateAPIKey)
+		r.Post("/auth/claim-local-data", app.HandleClaimLocalData)
+		r.Get("/dashboard/today", app.HandleDashboardToday)
+		r.Get("/day/totals", app.HandleDayTotals)
+		r.Post("/food-items", app.HandleCreateFoodItem)
+		r.Get("/food-items", app.HandleListFoodItems)
+		r.Get("/food-items/{id}", app.HandleGetFoodItem)
+		r.Put("/food-items/{id}", app.HandleUpdateFoodItem)
+		r.Delete("/food-items/{id}", app.HandleDeleteFoodItem)
+		r.Get("/log/today", app.HandleLogToday)
+		r.Get("/log/range", app.HandleLogRange)
+		r.Post("/log/food", app.HandleLogFood)
+		r.Delete("/log/{id}", app.HandleDeleteLogEntry)
+		r.Post("/body/weight", app.HandleBodyWeight)
+		r.Post("/activity/daily", app.HandleDailyActivity)
+		r.Get("/activity/water", app.HandleGetWater)
+		r.Post("/activity/water", app.HandleSetWater)
+		r.Post("/presets", app.HandleCreatePreset)
+		r.Post("/presets/{id}/apply", app.HandleApplyPreset)
+		r.Get("/recipes", app.HandleListRecipes)
+		r.Post("/recipes", app.HandleCreateRecipe)
+		r.Get("/recipes/{id}", app.HandleGetRecipe)
+		r.Put("/recipes/{id}", app.HandleUpdateRecipe)
+		r.Post("/recipes/{id}/ingredients", app.HandleAddRecipeIngredient)
+		r.Put("/recipes/{id}/ingredients", app.HandleReplaceRecipeIngredients)
+		r.Put("/recipes/{id}/ingredients/{ingredient_id}", app.HandleUpdateRecipeIngredient)
+		r.Delete("/recipes/{id}/ingredients/{ingredient_id}", app.HandleDeleteRecipeIngredient)
+		r.Post("/recipes/export-ingredients", app.HandleExportRecipeIngredients)
+		r.Get("/recipes/{id}/shopping-items", app.HandleGetShoppingItems)
+		r.Put("/recipes/{id}/shopping-items", app.HandleReplaceShoppingItems)
+		r.Get("/recipes/{id}/photo", app.HandleGetRecipePhoto)
+		r.Put("/recipes/{id}/photo", app.HandlePutRecipePhoto)
+		r.Delete("/recipes/{id}/photo", app.HandleDeleteRecipePhoto)
+		r.Get("/shopping-list", app.HandleShoppingList)
+		r.Get("/pantry", app.HandleListPantry)
+		r.Put("/pantry/{food_item_id}", app.HandleUpsertPantry)
+		r.Delete("/pantry/{food_item_id}", app.HandleDeletePantry)
+		r.Post("/pantry/deduct", app.HandleDeductPantry)
+		r.Get("/ingredient-categories", app.HandleListIngredientCategories)
+		r.Put("/ingredient-categories", app.HandleReplaceIngredientCategories)
+		r.Put("/ingredient-categories/set", app.HandleSetIngredientCategoryBody)
+		r.Put("/ingredient-categories/{name}", app.HandleSetIngredientCategory)
+		r.Delete("/ingredient-categories/{name}", app.HandleDeleteIngredientCategory)
+		r.Get("/settings", app.HandleGetSettings)
+		r.Put("/settings", app.HandlePutSetting)
+		r.Post("/ai-review/run", app.HandleTriggerAIReview)
+		r.Get("/ai-review/last", app.HandleGetLastAIReview)
+		r.Get("/nudges", app.HandleListNudges)
+		r.Post("/nudges", app.HandleCreateNudge)
+		r.Put("/nudges/{id}", app.HandleUpdateNudge)
+		r.Delete("/nudges/{id}", app.HandleDeleteNudge)
+		r.Post("/nudges/{id}/test", app.HandleTestNudge)
+		r.Get("/meal-plan", app.HandleListMealPlan)
+		r.Post("/meal-plan", app.HandleAddMealPlanEntry)
+		r.Delete("/meal-plan/{id}", app.HandleDeleteMealPlanEntry)
+		r.Get("/meal-plan/export.ics", app.HandleExportMealPlanICS)
+		r.Get("/workout-programs", app.HandleListWorkoutPrograms)
+		r.Post("/workout-programs", app.HandleCreateWorkoutProgram)
+		r.Put("/workout-programs/{id}", app.HandleUpdateWorkoutProgram)
+		r.Delete("/workout-programs/{id}", app.HandleDeleteWorkoutProgram)
+		r.Post("/workout-programs/{id}/exercises", app.HandleCreateExercise)
+		r.Delete("/workout-programs/{id}/exercises/{exercise_id}", app.HandleDeleteExercise)
+		r.Get("/workout-sessions/day", app.HandleGetWorkoutSessionsForDate)
+		r.Post("/workout-sessions", app.HandleCreateWorkoutSession)
+		r.Put("/workout-session-sets", app.HandleUpsertSessionSet)
+		r.Get("/data/export", app.HandleExportData)
+		r.Get("/data/export/markdown", app.HandleExportMarkdown)
+		r.Post("/data/import", app.HandleImportData)
+	})
 
 	s, err := gocron.NewScheduler(gocron.WithLocation(loc))
 	if err != nil {

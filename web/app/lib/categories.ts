@@ -1,5 +1,4 @@
 const API = "/api";
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 
 export const FOOD_GROUPS: { slug: string; label: string }[] = [
   { slug: "produce",            label: "Produce" },
@@ -24,7 +23,7 @@ export function normName(name: string): string {
 
 export async function fetchCategories(): Promise<Record<string, string>> {
   try {
-    const res = await fetch(`${API}/ingredient-categories?user_id=${USER_ID}`);
+    const res = await fetch(`${API}/ingredient-categories`);
     if (!res.ok) return {};
     const items: { ingredient_name: string; category_slug: string }[] =
       await res.json();
@@ -45,7 +44,7 @@ export async function saveCategory(
   const name = normName(ingredientName);
   if (!name) return;
   await fetch(
-    `${API}/ingredient-categories/set?user_id=${USER_ID}`,
+    `${API}/ingredient-categories/set`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
