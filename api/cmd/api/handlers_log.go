@@ -24,10 +24,7 @@ type DashboardResponse struct {
 }
 
 func (a *App) HandleDashboardToday(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	dateStr := r.URL.Query().Get("date")
 	if dateStr == "" {
 		dateStr = a.now().Format("2006-01-02")
@@ -82,10 +79,7 @@ type DayTotalsResponse struct {
 }
 
 func (a *App) HandleDayTotals(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	dateStr := r.URL.Query().Get("date")
 	if dateStr == "" {
 		dateStr = a.now().Format("2006-01-02")
@@ -143,10 +137,7 @@ type LogEntry struct {
 }
 
 func (a *App) HandleLogToday(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	dateStr := r.URL.Query().Get("date")
 	if dateStr == "" {
 		dateStr = a.now().Format("2006-01-02")
@@ -212,12 +203,9 @@ func (a *App) HandleDeleteLogEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleLogRange returns per-day calorie totals for a date range (for the calendar view).
-// Query params: user_id, from (YYYY-MM-DD), to (YYYY-MM-DD)
+// Query params: from (YYYY-MM-DD), to (YYYY-MM-DD)
 func (a *App) HandleLogRange(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
 	if fromStr == "" || toStr == "" {
@@ -284,9 +272,7 @@ func (a *App) HandleLogFood(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = "00000000-0000-0000-0000-000000000001"
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.OccurredAt == "" {
 		req.OccurredAt = a.now().Format(time.RFC3339)
 	}

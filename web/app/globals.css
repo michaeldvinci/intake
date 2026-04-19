@@ -79,12 +79,14 @@ input:focus, select:focus, textarea:focus {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.5px;
   color: var(--text);
-  padding: 0 8px 20px;
+  height: 40px;
+  padding: 0 12px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
 }
@@ -102,11 +104,14 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  height: 40px;
+  padding: 0 12px;
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 500;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
   transition: background 0.15s, color 0.15s;
 }
 

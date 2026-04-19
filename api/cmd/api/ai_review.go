@@ -298,11 +298,7 @@ func fireWebhook(webhookURL, message string) error {
 }
 
 func (a *App) HandleTriggerAIReview(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		writeJSON(w, 400, map[string]any{"error": "user_id required"})
-		return
-	}
+	userID := userIDFromContext(r.Context())
 
 	// Read all needed settings in one query
 	rows, err := a.DB.Query(r.Context(), `
@@ -375,11 +371,7 @@ func (a *App) HandleTriggerAIReview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleGetLastAIReview(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		writeJSON(w, 400, map[string]any{"error": "user_id required"})
-		return
-	}
+	userID := userIDFromContext(r.Context())
 	var resultJSON string
 	err := a.DB.QueryRow(r.Context(), `
 		SELECT value FROM user_settings WHERE user_id=$1 AND key='ai_last_review_result'

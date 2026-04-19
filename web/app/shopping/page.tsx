@@ -8,7 +8,6 @@ import {
   fetchCategories,
 } from "../lib/categories";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 // ---------------------------------------------------------------------------
@@ -97,7 +96,7 @@ export default function ShoppingPage() {
   const catsRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
-    fetch(`${API}/recipes?user_id=${USER_ID}`)
+    fetch(`${API}/recipes`)
       .then(r => r.ok ? r.json() : [])
       .then(setRecipes)
       .finally(() => setLoading(false));

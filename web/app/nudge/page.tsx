@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 const WEBHOOK_KEY = "intake_nudge_webhook";
 
@@ -50,7 +49,7 @@ export default function NudgePage() {
   // Load nudges
   async function loadNudges() {
     try {
-      const res = await fetch(`${API}/nudges?user_id=${USER_ID}`);
+      const res = await fetch(`${API}/nudges`);
       if (res.ok) setNudges(await res.json());
     } finally {
       setLoading(false);
@@ -72,7 +71,7 @@ export default function NudgePage() {
     const t = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`${API}/food-items?user_id=${USER_ID}&q=${encodeURIComponent(search.trim())}`);
+        const res = await fetch(`${API}/food-items?q=${encodeURIComponent(search.trim())}`);
         if (res.ok) setSearchResults(await res.json());
       } finally {
         setSearching(false);
@@ -96,7 +95,7 @@ export default function NudgePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: USER_ID,
+
           food_item_id: selectedFood.id,
           remind_at: remindAt,
           webhook_url: webhookUrl.trim(),

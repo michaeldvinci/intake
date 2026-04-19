@@ -11,7 +11,6 @@ import {
 } from "../lib/categories";
 import { diffDaysISO, todayISOInAppTZ } from "../lib/date";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 // ---------------------------------------------------------------------------
@@ -105,7 +104,7 @@ export default function PantryPage() {
   const loadPantry = useCallback(async () => {
     try {
       const [res, cats] = await Promise.all([
-        fetch(`${API}/pantry?user_id=${USER_ID}`),
+        fetch(`${API}/pantry`),
         fetchCategories(),
       ]);
       catsRef.current = cats;
@@ -137,7 +136,7 @@ export default function PantryPage() {
     const t = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`${API}/food-items?user_id=${USER_ID}&q=${encodeURIComponent(search.trim())}`);
+        const res = await fetch(`${API}/food-items?q=${encodeURIComponent(search.trim())}`);
         if (res.ok) setSearchResults(await res.json());
       } finally {
         setSearching(false);
@@ -147,7 +146,7 @@ export default function PantryPage() {
   }, [search, showSearch]);
 
   async function addToPantry(food: FoodSearchResult) {
-    await fetch(`${API}/pantry/${food.id}?user_id=${USER_ID}`, {
+    await fetch(`${API}/pantry/${food.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ quantity: 1 }),
@@ -163,9 +162,9 @@ export default function PantryPage() {
     setSaving(prev => ({ ...prev, [foodItemId]: true }));
     try {
       if (newQty === 0) {
-        await fetch(`${API}/pantry/${foodItemId}?user_id=${USER_ID}`, { method: "DELETE" });
+        await fetch(`${API}/pantry/${foodItemId}`, { method: "DELETE" });
       } else {
-        await fetch(`${API}/pantry/${foodItemId}?user_id=${USER_ID}`, {
+        await fetch(`${API}/pantry/${foodItemId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ quantity: newQty }),
@@ -181,7 +180,7 @@ export default function PantryPage() {
   async function removeItem(foodItemId: string) {
     setSaving(prev => ({ ...prev, [foodItemId]: true }));
     try {
-      await fetch(`${API}/pantry/${foodItemId}?user_id=${USER_ID}`, { method: "DELETE" });
+      await fetch(`${API}/pantry/${foodItemId}`, { method: "DELETE" });
       await loadPantry();
     } finally {
       setSaving(prev => ({ ...prev, [foodItemId]: false }));
@@ -195,7 +194,7 @@ export default function PantryPage() {
   }
 
   async function updateExpiration(foodItemId: string, expiresAt: string | null, currentQty: number) {
-    await fetch(`${API}/pantry/${foodItemId}?user_id=${USER_ID}`, {
+    await fetch(`${API}/pantry/${foodItemId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ quantity: currentQty, expires_at: expiresAt || null }),

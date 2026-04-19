@@ -120,10 +120,7 @@ type ExportBundle struct {
 }
 
 func (a *App) HandleExportData(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "00000000-0000-0000-0000-000000000001"
-	}
+	userID := userIDFromContext(r.Context())
 	reqID := middleware.GetReqID(r.Context())
 	log.Printf("[api-debug] req_id=%s export start user_id=%s", reqID, userID)
 	ctx := r.Context()
@@ -328,10 +325,7 @@ func (a *App) HandleExportData(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) HandleImportData(w http.ResponseWriter, r *http.Request) {
 	reqID := middleware.GetReqID(r.Context())
-	queryUserID := r.URL.Query().Get("user_id")
-	if queryUserID == "" {
-		queryUserID = "00000000-0000-0000-0000-000000000001"
-	}
+	queryUserID := userIDFromContext(r.Context())
 
 	var req ExportBundle
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -351,9 +345,6 @@ func (a *App) HandleImportData(w http.ResponseWriter, r *http.Request) {
 	rowsImported := 0
 	now := time.Now().UTC()
 	effectiveUserID := queryUserID
-	if r.URL.Query().Get("user_id") == "" && req.UserID != "" {
-		effectiveUserID = req.UserID
-	}
 	log.Printf("[api-debug] req_id=%s import start query_user_id=%s payload_user_id=%s effective_user_id=%s food_items=%d recipes=%d recipe_ingredients=%d recipe_portions=%d presets=%d preset_items=%d log_entries=%d body_weights=%d daily_activity=%d",
 		reqID, queryUserID, req.UserID, effectiveUserID,
 		len(req.FoodItems), len(req.Recipes), len(req.RecipeIngredients), len(req.RecipePortions),
@@ -595,10 +586,7 @@ func (a *App) HandleImportData(w http.ResponseWriter, r *http.Request) {
 // ── Markdown Export ───────────────────────────────────────────────────────────
 
 func (a *App) HandleExportMarkdown(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
 	if fromStr == "" || toStr == "" {

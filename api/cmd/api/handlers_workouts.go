@@ -58,10 +58,7 @@ type WorkoutProgram struct {
 }
 
 func (a *App) HandleListWorkoutPrograms(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 
 	rows, err := a.DB.Query(r.Context(),
 		`SELECT id, name, days, created_at FROM workout_programs WHERE user_id=$1 ORDER BY created_at`,
@@ -124,9 +121,7 @@ func (a *App) HandleCreateWorkoutProgram(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.Name == "" {
 		writeJSON(w, 400, map[string]any{"error": "name required"})
 		return
@@ -151,9 +146,7 @@ func (a *App) HandleUpdateWorkoutProgram(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 
 	_, err := a.DB.Exec(r.Context(),
 		`UPDATE workout_programs SET name=$1, days=$2 WHERE id=$3 AND user_id=$4`,
@@ -168,10 +161,7 @@ func (a *App) HandleUpdateWorkoutProgram(w http.ResponseWriter, r *http.Request)
 
 func (a *App) HandleDeleteWorkoutProgram(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 
 	ct, err := a.DB.Exec(r.Context(),
 		`DELETE FROM workout_programs WHERE id=$1 AND user_id=$2`, id, userID,
@@ -260,10 +250,7 @@ type WorkoutSessionDay struct {
 }
 
 func (a *App) HandleGetWorkoutSessionsForDate(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	dateStr := r.URL.Query().Get("date")
 	if dateStr == "" {
 		dateStr = a.now().Format("2006-01-02")
@@ -422,9 +409,7 @@ func (a *App) HandleCreateWorkoutSession(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.ProgramID == "" || req.Date == "" {
 		writeJSON(w, 400, map[string]any{"error": "program_id and date required"})
 		return

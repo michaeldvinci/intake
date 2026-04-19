@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useWeightUnit, toKg } from "../context/WeightUnit";
 import { todayISOInAppTZ } from "../lib/date";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 export default function MetricsPage() {
@@ -27,7 +26,7 @@ export default function MetricsPage() {
       const res = await fetch(`${API}/body/weight`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: USER_ID, measured_at: now, weight_kg: weightKg }),
+        body: JSON.stringify({ measured_at: now, weight_kg: weightKg }),
       });
       if (!res.ok) errors.push("weight");
     }
@@ -37,7 +36,7 @@ export default function MetricsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: USER_ID,
+
           date: today,
           steps: Number(steps) || 0,
           active_calories_est: Number(kcal) || 0,

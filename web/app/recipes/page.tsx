@@ -8,7 +8,6 @@ import {
   fetchCategories,
 } from "../lib/categories";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 type Item = {
@@ -117,7 +116,7 @@ export default function RecipesPage() {
 
   async function load() {
     setLoading(true);
-    const res = await fetch(`${API}/recipes?user_id=${USER_ID}`);
+    const res = await fetch(`${API}/recipes`);
     if (res.ok) setItems(await res.json());
     setLoading(false);
   }
@@ -151,7 +150,7 @@ export default function RecipesPage() {
     const res = await fetch(`${API}/recipes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: USER_ID, name, instructions: "", yield_count: 1 }),
+      body: JSON.stringify({ name, instructions: "", yield_count: 1 }),
     });
     const body = await res.json().catch(() => ({}));
     if (res.ok && body.id) {

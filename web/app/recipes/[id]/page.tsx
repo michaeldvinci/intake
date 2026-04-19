@@ -44,7 +44,6 @@ function renderMarkdown(md: string): string {
 // ---------------------------------------------------------------------------
 // Constants / types
 // ---------------------------------------------------------------------------
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 type ShoppingItem = {
@@ -104,7 +103,7 @@ export default function RecipeDetailPage() {
   async function loadAll() {
     if (!recipeID) return;
     const [recipeRes, linkedFoodRes, shoppingRes, cats] = await Promise.all([
-      fetch(`${API}/recipes/${recipeID}?user_id=${USER_ID}`, { cache: "no-store" }),
+      fetch(`${API}/recipes/${recipeID}`, { cache: "no-store" }),
       fetch(`${API}/food-items/${recipeID}`, { cache: "no-store" }),
       fetch(`${API}/recipes/${recipeID}/shopping-items`, { cache: "no-store" }),
       fetchCategories(),
@@ -181,7 +180,7 @@ export default function RecipeDetailPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: USER_ID,
+
           name: food.name,
           instructions: recipe.instructions,
           yield_count: recipe.yield_count,

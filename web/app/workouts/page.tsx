@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-const USER_ID = "00000000-0000-0000-0000-000000000001";
 const API = "/api";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -51,7 +50,7 @@ export default function WorkoutsPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/workout-programs?user_id=${USER_ID}`);
+      const res = await fetch(`${API}/workout-programs`);
       if (res.ok) setPrograms(await res.json());
     } finally {
       setLoading(false);
@@ -82,7 +81,7 @@ export default function WorkoutsPage() {
   }
 
   async function deleteProgram(id: string) {
-    await fetch(`${API}/workout-programs/${id}?user_id=${USER_ID}`, { method: "DELETE" });
+    await fetch(`${API}/workout-programs/${id}`, { method: "DELETE" });
     await load();
   }
 

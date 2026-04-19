@@ -13,10 +13,7 @@ import (
 )
 
 func (a *App) HandleListNudges(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = DefaultUserID
-	}
+	userID := userIDFromContext(r.Context())
 	now := a.now()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, a.Loc)
 	dayEnd := dayStart.Add(24 * time.Hour)
@@ -64,9 +61,7 @@ func (a *App) HandleCreateNudge(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = DefaultUserID
-	}
+	req.UserID = userIDFromContext(r.Context())
 	if req.FoodItemID == "" || req.RemindAt == "" || req.WebhookURL == "" {
 		writeJSON(w, 400, map[string]any{"error": "food_item_id, remind_at, and webhook_url are required"})
 		return
